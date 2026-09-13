@@ -1662,6 +1662,22 @@ def save_results(
                         chart.y_axis.delete = False
                         chart.y_axis.title = f"Close Price ({currency})" if currency else "Close Price"
 
+                        # Auto-scale the Y axis to this stock's actual 1Y trading range (with a
+                        # small margin) instead of Excel's default of anchoring the axis at 0.
+                        # Most stocks trade well above 0, so a 0-anchored axis crushes a year's
+                        # worth of real fluctuation into a thin band near the top of the chart.
+                        close_values = [
+                            history_ws.cell(row=r, column=close_col_idx).value
+                            for r in range(HIST_DATA_START_ROW, HIST_DATA_START_ROW + n_dates)
+                        ]
+                        close_values = [v for v in close_values if isinstance(v, (int, float))]
+                        if close_values:
+                            data_min, data_max = min(close_values), max(close_values)
+                            value_range = data_max - data_min
+                            padding = value_range * 0.05 if value_range > 0 else max(data_max * 0.05, 0.5)
+                            chart.y_axis.scaling.min = max(0.0, round(data_min - padding, 2))
+                            chart.y_axis.scaling.max = round(data_max + padding, 2)
+
                         cats = Reference(history_ws, min_col=1, min_row=HIST_DATA_START_ROW, max_row=HIST_DATA_START_ROW + n_dates - 1)
                         values_ref = Reference(history_ws, min_col=close_col_idx, min_row=HIST_DATA_START_ROW, max_row=HIST_DATA_START_ROW + n_dates - 1)
                         chart.add_data(values_ref, titles_from_data=False)
