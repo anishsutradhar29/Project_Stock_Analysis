@@ -218,10 +218,18 @@ def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str
     candidate_paths.extend([
         "SGX Index stock list.xlsx",
         os.path.join(os.getcwd(), "SGX Index stock list.xlsx"),
-        # Relative to this script's own location, not a hardcoded machine/OS path -
-        # keeps this working after the project is copied elsewhere.
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "SGX Index stock list.xlsx"),
     ])
+    try:
+        # Relative to this script's own location, not a hardcoded machine/OS path -
+        # keeps this working after the project is copied elsewhere. __file__ is only
+        # defined when running as a real .py file - in a notebook (Jupyter/Colab, where
+        # this same code also runs via update_notebook.py's sync) there is no backing
+        # file, so this candidate is simply skipped and the cwd/relative ones above cover it.
+        candidate_paths.append(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "SGX Index stock list.xlsx")
+        )
+    except NameError:
+        pass
 
     resolved_path = None
     for p in candidate_paths:
