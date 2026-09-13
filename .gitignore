@@ -1,0 +1,15 @@
+# Generated pipeline outputs (not source of truth — regenerate by running the scripts)
+NSE_Stock_Analysis_*.xlsx
+SGX_Stock_Analysis_*.xlsx
+*.csv
+*.json
+
+# Windows/WSL zone-identifier metadata files
+*:Zone.Identifier
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
