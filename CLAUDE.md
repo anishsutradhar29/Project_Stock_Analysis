@@ -29,9 +29,9 @@ directory — on any OS — has the same context as the session that wrote it.
   literal contents of both `.py` files into the notebook's two code cells
   (plus a short exec block calling `main()`'s pipeline) and refreshes the
   markdown cells to match. Run this after *any* change to either script.
-- `SGX Index stock list.xlsx` — source list of the 89 SGX index constituents
-  (STI / S Cap / L&M Cap) that `SGX_Stock_Analysis.py`'s default mode reads.
-  Falls back to an embedded 89-stock dict if this file is missing.
+- `stock list.xlsx` — shared by both scripts, one worksheet each (`SGX`, `NSE`).
+  Each row is Index/Inclusion-reason + Company + an optional Ticker column. See
+  "Shared stock list.xlsx" below for how the two scripts use it differently.
 - `requirements.txt` — `pandas`, `yfinance`, `requests`, `beautifulsoup4`,
   `openpyxl`. All pure-Python / cross-platform, nothing OS-specific.
 - `.gitignore` — excludes generated pipeline outputs (`*_Stock_Analysis_*.xlsx`,
@@ -49,9 +49,12 @@ directory — on any OS — has the same context as the session that wrote it.
 ```
 python NSE_Stock_Analysis.py [--mode fast|robust|full] [--top 80] [--workers 10]
                               [--no-financials] [--financials-years 5] [--output FILE.xlsx]
-python SGX_Stock_Analysis.py [--mode index|market-cap] [--index-file "SGX Index stock list.xlsx"]
+python SGX_Stock_Analysis.py [--mode index|market-cap] [--index-file "stock list.xlsx"]
                               [--no-financials] [--financials-years 5] [--output FILE.xlsx]
 ```
+
+NSE also accepts `--stock-list-file "stock list.xlsx"` (same file, `NSE` worksheet,
+purely additive - see "Shared stock list.xlsx" below).
 
 Default output is `<NSE|SGX>_Stock_Analysis_<today>.xlsx`. Both scripts also
 accept `.csv`/`.json` output, in which case the fundamentals/chart sheets
@@ -62,13 +65,15 @@ below don't apply (Excel-only features).
 Each workbook has (up to) four sheets, in this order, with hyperlinks
 threading them together:
 
-1. **Summary** — one row per company, ranked by market cap.
+1. **Summary** — one row per company, ranked by market cap. Deliberately does
+   *not* include `SharesOutstanding` (see below) even though the underlying
+   data is fetched.
 2. **52W Daily History** — horizontal layout: each company gets a 5-column
    block (`Close`, `% Change`, `Market Cap`, `Shares Out.`, `Volume`) with a
    2-tier merged header, rows are trading days.
 3. **Financials Detail** — a stacked block per company: up to 5 fiscal years
-   (oldest → newest, top → bottom) of Revenue, Net Income, EPS, P/E, P/S,
-   P/B, Gross/Operating Margin, Debt/Equity.
+   (oldest → newest, top → bottom) of Revenue, Net Income, EPS, Dividend/Unit,
+   P/E, P/S, P/B, Gross/Operating Margin, Debt/Equity.
 4. **Price Charts** — one compact 1-year Close-price line chart per company.
 
 Navigation: **Name** cell on Summary → jumps to that company's block on
@@ -121,7 +126,14 @@ changing it:
   `yfinance`'s `income_stmt`/`balance_sheet`) is combined with the closing
   share price on (or immediately before) that fiscal year-end date. Years
   requested default to 5 (`--financials-years`), capped by however many
-  Yahoo actually has (usually 5, sometimes fewer for smaller/newer tickers).
+  Yahoo actually has. **In practice this is usually 4, not 5** - Yahoo's free
+  API currently only serves ~4 years of annual `income_stmt`/`balance_sheet`
+  data regardless of what's requested (confirmed via multiple reports on
+  yfinance's own GitHub, including from its maintainer); the 5th year only
+  shows up on Yahoo Finance's paid "Plus" tier, which `yfinance` has no way
+  to authenticate as. Not fixable from this project's side - if 5 full years
+  is a hard requirement, it would mean switching to a different (likely
+  paid) financial data provider, not a parameter tweak.
 
 - **SGX fundamentals are in each company's native reporting currency**
   (labeled per block, e.g. "Reported in USD"), *not* SGD-converted like the
@@ -133,7 +145,63 @@ changing it:
   actually captured from `yfinance`'s `.info`, despite `save_results`
   already having formatting logic ready for it) — this made the 52W History
   sheet's `Market Cap`/`Shares Out.` columns permanently blank. Fixed in
-  both scripts' `fetch_latest_ticker_data`.
+  both scripts' `fetch_latest_ticker_data`. It's still fetched onto
+  `df_summary` today (52W History's per-day Market Cap calc reads it from
+  there), but `save_results` drops it from the *Summary sheet's* formatted
+  copy specifically (`df_summary_fmt`) before writing - the underlying
+  `df_summary` is untouched, so don't "fix" this by removing the fetch.
+
+- **Dividend/Unit (Financials Detail) is also an approximation.** yfinance
+  doesn't expose a per-fiscal-year dividend figure directly (dividends
+  aren't a line item on the income statement or balance sheet). Each fiscal
+  year's total is reconstructed by summing `Ticker.dividends` (a real
+  per-payment historical series, ex-dividend date → per-share/unit amount)
+  over that fiscal year's ~12-month window, ending at that year's fiscal
+  year-end date (same window logic already used for the P/E/P/S/P/B
+  approximation above).
+
+## Shared stock list.xlsx (SGX index + both scripts' "Personal" additions)
+
+One workbook, two worksheets, read very differently by the two scripts:
+
+- **`SGX` worksheet** is `load_sgx_index_stock_list()`'s **primary source of
+  SGX's entire default-mode stock universe** - all 89 STI/S Cap/L & M Cap
+  index constituents, plus any rows tagged `Personal` in the Index column
+  (currently 3: Micro Mechanics, Jardine C&C, Rex International). If the file
+  is missing entirely, falls back to an embedded copy of the same data
+  (`DEFAULT_SGX_INDEX_STOCKS`).
+- **`NSE` worksheet** is **purely additive** for `extract_top80_with_nifty50()`
+  - NSE already has a full stock universe (NIFTY 50 + Top N market-cap
+    ranking) without this file. Rows here (currently 8 personal picks) are
+  merged into the fetch pass and *guaranteed* to appear in the final output,
+  same mechanism already used to guarantee NIFTY 50 constituents that fall
+  outside the Top N: tagged `Inclusion_Reason = "Personal"`, or `"<existing
+  reason> + Personal"` if the stock already qualified another way (e.g. also
+  Top 80). If the file or `NSE` worksheet is missing, personal additions are
+  silently skipped - no embedded fallback here, since NSE doesn't need one.
+
+Each row is `Index`/`Inclusion reason` + `Company` + an optional **`Ticker`**
+column (added after the two loaders originally only matched by Company name):
+
+- **A non-blank Ticker cell (e.g. `5DD.SI`, `ACC.NS`) is used directly** -
+  the real yfinance symbol, no name lookup involved. This is the preferred
+  way to add a new stock now: one spreadsheet edit, no code change.
+- **A blank Ticker cell falls back to name-matching** against
+  `SGX_INDEX_STOCK_MAPPINGS` / `NSE_PERSONAL_STOCK_MAPPINGS` (hardcoded
+  name → code/symbol dicts in each script) - exact match, then (SGX only) a
+  fuzzy match, then (SGX only) a crude last-resort guess from the company
+  name's first 4 letters, which is often wrong for anything not already in
+  the dict. All 100 rows currently in the file have their Ticker filled in,
+  so this fallback path only matters for a *newly added* row that skips the
+  Ticker column.
+- **SGX worksheet name matters**: the loader checks `"SGX"` first (the
+  current name), falls back to the legacy `"Sheet2"` name for older file
+  copies, then `wb.active` as a last resort.
+- Adding a stock to the `NSE` worksheet with a name not in
+  `NSE_PERSONAL_STOCK_MAPPINGS` **and** no Ticker filled in gets skipped
+  with a logged warning, not a crude guess (unlike SGX's fallback) - NSE
+  ticker codes aren't reliably derivable from a company name, so this
+  script doesn't try.
 
 ## Cross-platform notes
 
