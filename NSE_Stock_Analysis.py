@@ -107,6 +107,23 @@ FALLBACK_NIFTY_50 = [
     ("BEL", "Bharat Electronics Ltd", "Capital Goods"),
 ]
 
+# Personal stock additions: company names (as they appear in the "Company" column
+# of stock list.xlsx's "NSE" worksheet) -> (Code, Display Name). These are guaranteed
+# inclusion in the final output (Inclusion_Reason "Personal"), same idea as the NIFTY 50
+# guarantee below, but purely additive - unlike SGX's index list, the NSE pipeline
+# already has a full stock universe without this file, so there's no embedded fallback
+# list here; if the file/sheet is missing, personal additions are simply skipped.
+NSE_PERSONAL_STOCK_MAPPINGS = {
+    "ACC LTD": ("ACC", "ACC Ltd"),
+    "AMBUJA CEMENTS LTD": ("AMBUJACEM", "Ambuja Cements Ltd"),
+    "ASHOK LEYLAND LTD": ("ASHOKLEY", "Ashok Leyland Ltd"),
+    "INDIAN HOTELS CO LTD": ("INDHOTEL", "Indian Hotels Co Ltd"),
+    "ITC HOTELS LIMITED": ("ITCHOTELS", "ITC Hotels Ltd"),
+    "KWALITY WALLS (INDIA) LIMITED": ("KWIL", "Kwality Wall's (India) Ltd"),
+    "MARICO LTD (MARICO INDUSTRIES LTD)": ("MARICO", "Marico Ltd"),
+    "SIEMENS ENERGY INDIA LIMITED": ("ENRIN", "Siemens Energy India Ltd"),
+}
+
 
 def clean_text(text: str) -> str:
     """Strip Wikipedia citation brackets [1], [zh], etc."""
@@ -205,6 +222,99 @@ def get_nifty50_tickers(with_suffix: bool = True, timeout: int = 10) -> List[str
 
     logger.info("Using hardcoded fallback list for NIFTY 50 constituents.")
     return [f"{code}.NS" if with_suffix else code for code, _, _ in FALLBACK_NIFTY_50]
+
+
+def load_nse_personal_stocks(excel_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Extract personal stock additions from the shared 'stock list.xlsx' workbook's
+    'NSE' worksheet (Inclusion reason, Company, and an optional Ticker column).
+    Purely additive - if the file or sheet isn't present, returns an empty list
+    rather than falling back to anything, since the rest of the pipeline already
+    has a full stock universe without it.
+
+    A non-blank Ticker cell (e.g. 'ACC.NS') is used directly - no name lookup
+    needed. A blank one falls back to matching the Company name against
+    NSE_PERSONAL_STOCK_MAPPINGS; unmatched rows are skipped with a warning.
+
+    Returns a list of dicts: [{'code': '...', 'symbol': '...NS', 'name': '...'}, ...]
+    """
+    candidate_paths = []
+    if excel_path:
+        candidate_paths.append(excel_path)
+    candidate_paths.extend([
+        "stock list.xlsx",
+        os.path.join(os.getcwd(), "stock list.xlsx"),
+    ])
+    try:
+        # See the matching note in SGX_Stock_Analysis.py's load_sgx_index_stock_list:
+        # __file__ is only defined when running as a real .py file, not inside a
+        # notebook cell - this candidate is simply skipped there.
+        candidate_paths.append(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock list.xlsx")
+        )
+    except NameError:
+        pass
+
+    resolved_path = None
+    for p in candidate_paths:
+        if p and os.path.exists(p):
+            resolved_path = p
+            break
+
+    if not resolved_path:
+        logger.info("'stock list.xlsx' not found - skipping personal stock additions.")
+        return []
+
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(resolved_path)
+        if "NSE" not in wb.sheetnames:
+            logger.info("'stock list.xlsx' has no 'NSE' worksheet - skipping personal stock additions.")
+            return []
+        sheet = wb["NSE"]
+
+        stocks = []
+        seen_codes = set()
+        for row in sheet.iter_rows(values_only=True):
+            if not any(row):
+                continue
+            vals = [str(c).strip() for c in row if c is not None]
+            if "Company" in vals and ("Inclusion reason" in vals or "Inclusion Reason" in vals):
+                continue  # header row
+
+            non_none = [c for c in row if c is not None]
+            if len(non_none) < 2:
+                continue
+            comp = str(non_none[1]).strip()
+            # Optional 3rd column: a real ticker (e.g. 'ACC.NS') straight from the sheet -
+            # present since the "Ticker" column was added. Present and non-blank takes
+            # priority over name-matching below; absent/blank falls back to it unchanged.
+            ticker = str(non_none[2]).strip() if len(non_none) >= 3 else None
+
+            if ticker:
+                sym = ticker
+                code = sym.split(".")[0]
+                dict_entry = NSE_PERSONAL_STOCK_MAPPINGS.get(comp.upper())
+                display_name = dict_entry[1] if dict_entry else comp
+            else:
+                mapping = NSE_PERSONAL_STOCK_MAPPINGS.get(comp.upper())
+                if mapping is None:
+                    logger.warning(f"No NSE ticker mapping for personal stock '{comp}' - skipping (add a Ticker column value, or add it to NSE_PERSONAL_STOCK_MAPPINGS).")
+                    continue
+                code, display_name = mapping
+                sym = f"{code}.NS"
+
+            if code not in seen_codes:
+                stocks.append({"code": code, "symbol": sym, "name": display_name})
+                seen_codes.add(code)
+
+        if stocks:
+            logger.info(f"Loaded {len(stocks)} personal stock(s) from '{resolved_path}' ('NSE' worksheet).")
+        return stocks
+
+    except Exception as e:
+        logger.warning(f"Error reading personal stocks from '{resolved_path}': {e}. Skipping personal additions.")
+        return []
 
 
 def get_nse_universe(nifty50_codes: Set[str], mode: str = "robust") -> List[Dict[str, Any]]:
@@ -466,11 +576,14 @@ def fetch_latest_ticker_data(security: Dict[str, Any], max_retries: int = 2) -> 
 def extract_top80_with_nifty50(
     max_workers: int = 10,
     top_n: int = 80,
-    mode: str = "robust"
+    mode: str = "robust",
+    stock_list_file: Optional[str] = None
 ) -> pd.DataFrame:
     """
-    Extract Top 80 NSE companies by market cap + guaranteed inclusion of all NIFTY 50 constituents.
-    Supports mode: 'fast' (Nifty 100), 'robust' (Nifty 200, default), 'full' (all 2,550+ stocks).
+    Extract Top 80 NSE companies by market cap + guaranteed inclusion of all NIFTY 50
+    constituents + guaranteed inclusion of any "Personal" stocks from stock list.xlsx's
+    'NSE' worksheet. Supports mode: 'fast' (Nifty 100), 'robust' (Nifty 200, default),
+    'full' (all 2,550+ stocks).
     """
     start_time = time.time()
     logger.info(f"Starting NSE Top {top_n} & NIFTY 50 market cap extraction in [{mode.upper()}] mode...")
@@ -481,6 +594,23 @@ def extract_top80_with_nifty50(
     logger.info(f"Found {len(nifty50_codes)} NIFTY 50 constituent codes.")
 
     securities = get_nse_universe(nifty50_codes, mode=mode)
+
+    # Merge in any personal stocks not already covered by the broad universe above,
+    # so they get fetched and ranked in the same pass (same guarantee pattern used
+    # for NIFTY 50 further below).
+    personal_stocks = load_nse_personal_stocks(excel_path=stock_list_file)
+    personal_codes = {p["code"] for p in personal_stocks}
+    existing_codes = {s["code"] for s in securities}
+    for p in personal_stocks:
+        if p["code"] not in existing_codes:
+            securities.append({
+                "code": p["code"],
+                "symbol": p["symbol"],
+                "name": p["name"],
+                "is_nifty50": p["code"] in nifty50_codes,
+            })
+            existing_codes.add(p["code"])
+
     total_count = len(securities)
     logger.info(f"Querying {total_count} NSE instruments across {max_workers} concurrent threads...")
 
@@ -503,14 +633,17 @@ def extract_top80_with_nifty50(
                 rate = completed_count / elapsed if elapsed > 0 else 0
                 logger.info(f"Progress: {completed_count}/{total_count} ({pct:.1f}%) | {rate:.1f} tickers/sec")
 
-    # 3. Targeted Retry Pass for any missing NIFTY 50 constituents
-    failed_nifty = [r for r in results if r["Code"] in nifty50_codes and (r["_MarketCapRaw"] is None or r["_MarketCapRaw"] <= 0)]
+    # 3. Targeted Retry Pass for any missing NIFTY 50 constituents or Personal stocks -
+    #    both are guaranteed-inclusion picks (see steps 6-7 below), so it's worth a
+    #    dedicated retry rather than letting a transient fetch failure silently drop them.
+    guaranteed_codes = nifty50_codes | personal_codes
+    failed_nifty = [r for r in results if r["Code"] in guaranteed_codes and (r["_MarketCapRaw"] is None or r["_MarketCapRaw"] <= 0)]
     if failed_nifty:
-        logger.info(f"Running dedicated retry pass for {len(failed_nifty)} NIFTY 50 constituents...")
+        logger.info(f"Running dedicated retry pass for {len(failed_nifty)} guaranteed-inclusion constituent(s)...")
         time.sleep(1.0)
         for item in failed_nifty:
             refetched = fetch_latest_ticker_data(
-                {"symbol": item["Symbol"], "code": item["Code"], "name": item["Name"], "is_nifty50": True},
+                {"symbol": item["Symbol"], "code": item["Code"], "name": item["Name"], "is_nifty50": item["Code"] in nifty50_codes},
                 max_retries=3
             )
             if refetched["_MarketCapRaw"] is not None:
@@ -556,6 +689,25 @@ def extract_top80_with_nifty50(
     else:
         logger.info(f"All 50 NIFTY constituents are already present in the Top {top_n}!")
         combined_df = top_n_df
+
+    # 7. Guarantee inclusion of "Personal" stocks (from stock list.xlsx's 'NSE'
+    #    worksheet), same pattern as the NIFTY 50 guarantee above. A stock already
+    #    present for another reason (e.g. NIFTY 50 or Top N) keeps that reason and
+    #    gets "+ Personal" appended, rather than losing the original context.
+    if personal_codes:
+        in_combined_mask = combined_df["Code"].isin(personal_codes)
+        combined_df.loc[in_combined_mask, "Inclusion_Reason"] = combined_df.loc[in_combined_mask, "Inclusion_Reason"].apply(
+            lambda r: r if "Personal" in str(r) else f"{r} + Personal"
+        )
+
+        already_covered = set(combined_df.loc[in_combined_mask, "Code"])
+        missing_personal_codes = personal_codes - already_covered
+        if missing_personal_codes:
+            missing_personal_df = full_df[full_df["Code"].isin(missing_personal_codes)].copy()
+            missing_personal_df["Inclusion_Reason"] = missing_personal_df["NSE_Rank"].apply(
+                lambda r: f"Personal (Rank #{r})" if pd.notnull(r) else "Personal"
+            )
+            combined_df = pd.concat([combined_df, missing_personal_df], ignore_index=True)
 
     # Drop internal columns
     combined_df = combined_df.drop(columns=["Is_NIFTY50", "_MarketCapRaw"], errors="ignore")
@@ -874,16 +1026,23 @@ def fetch_long_price_history(symbol: str, range_str: str = "5y", max_retries: in
 def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 5) -> pd.DataFrame:
     """
     Build a per-fiscal-year fundamentals table (chronological, oldest year first): Revenue,
-    Net Income, EPS, P/E, P/S, P/B, Gross Margin, Operating Margin, and Debt/Equity.
+    Net Income, EPS, Dividend Per Share, P/E, P/S, P/B, Gross Margin, Operating Margin,
+    and Debt/Equity.
 
     Historical P/E, P/S, and P/B are approximations: each fiscal year's reported diluted
     EPS / average diluted shares / stockholders' equity is combined with the closing share
     price on (or immediately before) that fiscal year-end date. Yahoo Finance's free annual
     statements go back up to 5 years for most tickers, but occasionally fewer - whatever is
     actually available (capped at max_years) is returned.
+
+    Dividend Per Share is also an approximation, same spirit as P/E/P/S/P/B above: yfinance
+    doesn't expose a per-fiscal-year dividend figure directly (dividends aren't a line item
+    on the income statement or balance sheet), so each fiscal year's total is reconstructed
+    by summing `Ticker.dividends` (a real per-payment historical series, ex-dividend date ->
+    per-share amount) over that fiscal year's ~12-month window.
     """
     columns = [
-        "FiscalYearEnd", "Revenue", "NetIncome", "EPS", "P/E", "P/S", "P/B",
+        "FiscalYearEnd", "Revenue", "NetIncome", "EPS", "DividendPerShare", "P/E", "P/S", "P/B",
         "GrossMargin", "OperatingMargin", "DebtToEquity", "Currency",
     ]
     empty = pd.DataFrame(columns=columns)
@@ -923,7 +1082,16 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
 
         price_hist = fetch_long_price_history(symbol, range_str="5y")
 
+        try:
+            dividends = ticker.dividends
+            if dividends is not None and not dividends.empty:
+                dividends = dividends.copy()
+                dividends.index = pd.to_datetime(dividends.index).tz_localize(None)
+        except Exception:
+            dividends = None
+
         rows = []
+        prev_fye = None
         for period in periods:
             fye = period.date() if hasattr(period, "date") else period
             revenue = safe_float(revenue_row.get(period)) if revenue_row is not None else None
@@ -945,11 +1113,25 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
             op_margin = (op_income / revenue * 100.0) if (op_income is not None and revenue not in (None, 0)) else None
             debt_to_equity = (debt / equity) if (debt is not None and equity not in (None, 0)) else None
 
+            # Dividend Per Share for this fiscal year: sum of per-share dividend payments
+            # (ex-dividend date -> amount, from yfinance) falling within this fiscal year's
+            # ~12-month window - since the previous period's fiscal year-end if known,
+            # otherwise approximated as 1 year before this period's fiscal year-end.
+            dps = None
+            if dividends is not None and not dividends.empty:
+                window_end = pd.Timestamp(fye)
+                window_start = prev_fye if prev_fye is not None else (window_end - pd.DateOffset(years=1))
+                in_window = dividends[(dividends.index > window_start) & (dividends.index <= window_end)]
+                if not in_window.empty:
+                    dps = float(in_window.sum())
+            prev_fye = pd.Timestamp(fye)
+
             rows.append({
                 "FiscalYearEnd": fye.strftime("%Y-%m-%d") if hasattr(fye, "strftime") else str(fye),
                 "Revenue": revenue,
                 "NetIncome": net_income,
                 "EPS": round(eps, 2) if eps is not None else None,
+                "DividendPerShare": round(dps, 2) if dps is not None else None,
                 "P/E": round(pe, 2) if pe is not None else None,
                 "P/S": round(ps, 2) if ps is not None else None,
                 "P/B": round(pb, 2) if pb is not None else None,
@@ -1036,11 +1218,13 @@ def save_results(
             from openpyxl.utils import get_column_letter
 
             df_summary_fmt = df_summary.copy()
-            
-            if "SharesOutstanding" in df_summary_fmt.columns:
-                df_summary_fmt["SharesOutstanding"] = df_summary_fmt["SharesOutstanding"].apply(
-                    lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
-                )
+
+            # SharesOutstanding stays out of the Summary sheet specifically (still used
+            # internally to compute the 52W History sheet's Market Cap column, via the
+            # untouched df_summary passed into extract_52w_history_all before this point -
+            # dropping it only from this formatted copy doesn't affect that).
+            df_summary_fmt = df_summary_fmt.drop(columns=["SharesOutstanding"], errors="ignore")
+
             if "Volume" in df_summary_fmt.columns:
                 df_summary_fmt["Volume"] = df_summary_fmt["Volume"].apply(
                     lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
@@ -1183,7 +1367,7 @@ def save_results(
                     hyperlink_font = Font(name="Calibri", size=11, color="0563C1", underline="single")
 
                     fin_metric_cols = [
-                        "Fiscal Year End", "Revenue", "Net Income", "EPS", "P/E", "P/S", "P/B",
+                        "Fiscal Year End", "Revenue", "Net Income", "EPS", "Dividend/Unit", "P/E", "P/S", "P/B",
                         "Gross Margin", "Operating Margin", "Debt/Equity",
                     ]
                     n_fin_cols = len(fin_metric_cols)
@@ -1223,6 +1407,7 @@ def save_results(
                                 format_currency(fin_row.get("Revenue"), currency) if pd.notnull(fin_row.get("Revenue")) else "N/A",
                                 format_currency(fin_row.get("NetIncome"), currency) if pd.notnull(fin_row.get("NetIncome")) else "N/A",
                                 f"{fin_row['EPS']:.2f}" if pd.notnull(fin_row.get("EPS")) else "N/A",
+                                f"{fin_row['DividendPerShare']:.2f}" if pd.notnull(fin_row.get("DividendPerShare")) else "N/A",
                                 f"{fin_row['P/E']:.2f}" if pd.notnull(fin_row.get("P/E")) else "N/A",
                                 f"{fin_row['P/S']:.2f}" if pd.notnull(fin_row.get("P/S")) else "N/A",
                                 f"{fin_row['P/B']:.2f}" if pd.notnull(fin_row.get("P/B")) else "N/A",
@@ -1401,6 +1586,12 @@ def main():
         default="robust",
         help="Scanning mode: 'fast' (NIFTY 100 ~100 stocks), 'robust' (NIFTY 200 ~200 stocks, default), 'full' (Entire NSE ~2,550+ stocks)."
     )
+    parser.add_argument(
+        "--stock-list-file",
+        type=str,
+        default="stock list.xlsx",
+        help="Path to the shared stock list Excel file, 'NSE' worksheet, for personal stock additions (default: 'stock list.xlsx')."
+    )
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     default_filename = f"NSE_Stock_Analysis_{today_str}.xlsx"
 
@@ -1435,7 +1626,8 @@ def main():
     df_summary = extract_top80_with_nifty50(
         max_workers=args.workers,
         top_n=args.top,
-        mode=args.mode
+        mode=args.mode,
+        stock_list_file=args.stock_list_file
     )
 
     print_top80_nifty_table(df_summary)

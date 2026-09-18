@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Stock Market Analysis (NSE + SGX)
 
 Extracts live market-cap/valuation snapshots, 52-week daily price history, and
@@ -28,9 +32,17 @@ directory — on any OS — has the same context as the session that wrote it.
 - `SGX Index stock list.xlsx` — source list of the 89 SGX index constituents
   (STI / S Cap / L&M Cap) that `SGX_Stock_Analysis.py`'s default mode reads.
   Falls back to an embedded 89-stock dict if this file is missing.
-- `archive/` — earlier iterations, superseded by the two top-level scripts.
 - `requirements.txt` — `pandas`, `yfinance`, `requests`, `beautifulsoup4`,
   `openpyxl`. All pure-Python / cross-platform, nothing OS-specific.
+- `.gitignore` — excludes generated pipeline outputs (`*_Stock_Analysis_*.xlsx`,
+  `*.csv`, `*.json`), Python/Jupyter caches, and Windows/WSL
+  `*:Zone.Identifier` metadata files. Generated outputs are reproducible by
+  re-running the scripts, so they're deliberately not tracked.
+- `update_and_share.sh` — one-command "save progress" wrapper: runs
+  `update_notebook.py`, compile-checks both scripts, `git add`/`commit`
+  (skipped if nothing changed) /`push`, then refreshes a shared Google Drive
+  copy of the notebook via `rclone` (see "Sharing workflow" below). Run this
+  instead of the individual steps whenever a script changes.
 
 ## Running
 
@@ -97,6 +109,11 @@ changing it:
      pre-formatted display strings since nothing needs to chart them.
   - Charts have visible X (Date, thinned to ~monthly labels via
     `tickLblSkip=21`) and Y (`Close Price (<currency>)`) axes.
+  - The Y axis is explicitly scaled to each company's actual 1Y Close range
+    (min/max read back from the same "52W Daily History" cells, ±5% padding,
+    floored at 0) rather than left on Excel's auto-scaling. Auto-scaling
+    anchors at 0 by default, which flattens a year of real fluctuation into a
+    thin band for any stock that trades well above 0.
 
 - **Historical P/E, P/S, P/B are approximations.** Yahoo Finance doesn't
   provide historical valuation ratios directly. Each fiscal year's reported
@@ -133,6 +150,17 @@ If you add new file paths anywhere in this project, use the same pattern
 there is no other OS-specific code left in the project (no `subprocess`,
 `winreg`, or platform-conditional logic).
 
+A related gotcha: `__file__` is only defined when a `.py` file is actually
+executed as a script — it doesn't exist inside a notebook cell (Jupyter or
+Colab both run cells with no backing file), and `update_notebook.py` copies
+this same source into the notebook verbatim. `load_sgx_index_stock_list()`'s
+`__file__`-based candidate path used to raise `NameError` as soon as the
+notebook ran that cell. Fixed by wrapping just that one candidate in
+`try/except NameError` so it's silently skipped in a notebook context (the
+`os.getcwd()`/bare-relative-path candidates already in the same list cover
+Colab). Keep this in mind for any future `__file__` usage that might end up
+in a notebook cell via the sync script.
+
 ## Notebook sync workflow
 
 After changing either `.py` script:
@@ -154,6 +182,28 @@ python -m py_compile NSE_Stock_Analysis.py SGX_Stock_Analysis.py
 
 (and optionally `compile()` each notebook code cell's joined source, since a
 bad slice boundary would be a silent notebook bug, not a `.py` one).
+
+## Sharing workflow (git + Google Drive)
+
+This project is a git repository with a private GitHub remote (`origin`).
+Since the repo is private, viewers without GitHub collaborator access can't
+use Colab's "Open from GitHub" flow (it authenticates as the viewer, and a
+private repo will simply refuse anyone without access). Instead, a copy of
+the notebook lives on Google Drive and is shared from there — kept in sync
+with the actual project files via `rclone` (a Drive-authenticated CLI), not
+Google Drive's desktop sync client.
+
+Why not the Drive desktop client: this project's working directory lives in
+WSL2's native Linux filesystem, which Windows (and the Drive desktop app)
+can only reach through a virtual network path (`\\wsl.localhost\...`) — the
+desktop client's folder-watching sync doesn't support that path reliably.
+`rclone` sidesteps this entirely by talking to the Drive API directly from
+Linux, so no Drive desktop install is needed.
+
+`update_and_share.sh` re-uploads the notebook to the *same* Drive file path
+each time (`rclone copyto`), overwriting its content in place rather than
+creating a new file — this keeps the same Drive file ID, so a share link
+already handed to someone keeps working without re-sharing after updates.
 
 ## Known open item
 

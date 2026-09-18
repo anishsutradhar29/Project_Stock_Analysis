@@ -10,6 +10,7 @@ SGX_Stock_Analysis_*.xlsx
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/

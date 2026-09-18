@@ -35,9 +35,9 @@ today_str = datetime.date.today().strftime('%Y-%m-%d')
 sgx_filename = f'SGX_Stock_Analysis_{today_str}.xlsx'
 
 print(f'🚀 Starting SGX Extraction (Default Index Mode: STI + S Cap + L & M Cap)...')
-# Default mode extracts from 'SGX Index stock list.xlsx' (falls back to an embedded
-# 89-stock list automatically if that file isn't uploaded to this Colab session).
-sgx_summary = extract_index_stocks(excel_path='SGX Index stock list.xlsx', max_workers=10)
+# Default mode extracts from 'stock list.xlsx''s 'SGX' worksheet (falls back to an
+# embedded index-stock list automatically if that file isn't uploaded to this Colab session).
+sgx_summary = extract_index_stocks(excel_path='stock list.xlsx', max_workers=10)
 display(sgx_summary.head(10))
 
 print(f'📊 Extracting 52-Week Daily Historical Data...')
@@ -79,7 +79,7 @@ today_str = datetime.date.today().strftime('%Y-%m-%d')
 nse_filename = f'NSE_Stock_Analysis_{today_str}.xlsx'
 
 print(f'🚀 Starting NSE Extraction (Top 80 + NIFTY 50)...')
-nse_summary = extract_top80_with_nifty50(max_workers=10, top_n=80, mode='robust')
+nse_summary = extract_top80_with_nifty50(max_workers=10, top_n=80, mode='robust', stock_list_file='stock list.xlsx')
 display(nse_summary.head(10))
 
 print(f'📊 Extracting 52-Week Daily Historical Data...')
@@ -116,8 +116,8 @@ except ImportError:
 This Google Colab notebook extracts live fundamentals, 52-week pricing metrics, trailing P/E, sector, industry, a 52-week daily historical time-series, and a 5-year fundamentals history for all top listed companies across **SGX** and **NSE**.
 
 #### Key Features:
-- **SGX Analysis**: STI, S Cap, and L & M Cap index constituents (89 companies), read from `SGX Index stock list.xlsx`.
-- **NSE Analysis**: Top 80 companies by market cap with automatic inclusion of all 50 NIFTY 50 constituents (with `fast`, `robust`, and `full` modes).
+- **SGX Analysis**: STI, S Cap, and L & M Cap index constituents plus any personal additions, read from `stock list.xlsx`'s `SGX` worksheet.
+- **NSE Analysis**: Top 80 companies by market cap with automatic inclusion of all 50 NIFTY 50 constituents plus any personal additions from `stock list.xlsx`'s `NSE` worksheet (with `fast`, `robust`, and `full` modes).
 - **Multi-Worksheet Excel Output**: Exports a formatted `.xlsx` workbook containing:
   - **Sheet 1 (`Summary`)**: Snapshot metrics formatted to 2 decimal places with B/M/T abbreviations.
   - **Sheet 2 (`52W Daily History`)**: Horizontal time-series layout with 2-tier merged headers (`CODE - Name` over metric sub-columns `Close`, `% Change`, `Market Cap`, `Shares Out.`, `Volume`).
@@ -127,7 +127,7 @@ This Google Colab notebook extracts live fundamentals, 52-week pricing metrics, 
 """
     sgx_step_md = """## 🇸🇬 Step 2: Singapore Exchange (SGX Index: STI + S Cap + L & M Cap)
 Execute the cell below to run the SGX extraction pipeline. It will:
-1. Load the 89 SGX index constituents from `SGX Index stock list.xlsx` (falls back to an embedded list if the file isn't uploaded).
+1. Load the SGX index constituents, plus any personal additions, from `stock list.xlsx`'s `SGX` worksheet (falls back to an embedded list if the file isn't uploaded).
 2. Convert every market cap to SGD using live Yahoo Finance forex rates.
 3. Extract snapshot metrics, 52-week historical daily prices, and 5-year fundamentals history.
 4. Generate and download `SGX_Stock_Analysis_YYYY-MM-DD.xlsx` (Summary → Financials Detail → Price Charts, all cross-linked).

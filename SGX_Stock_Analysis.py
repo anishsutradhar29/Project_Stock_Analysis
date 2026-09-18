@@ -8,7 +8,7 @@ trailing P/E, sector, industry, and custom 52-week range positioning for:
    - Straits Times Index (STI) [30 constituents]
    - Small Cap Index (S Cap) [40 constituents]
    - Large & Mid Cap Index (L & M Cap) [19 constituents]
-   Directly extracted and mapped from 'SGX Index stock list.xlsx'.
+   Directly extracted and mapped from 'stock list.xlsx' (its 'SGX' worksheet).
 2. Market Cap Scanning Mode (--scan-market-cap / --mode market-cap):
    - Full SGX universe extraction, Top N ranking, and STI catch-up inclusion.
 
@@ -92,7 +92,7 @@ FALLBACK_STI_30 = [
     ("V03", "Venture Corporation Ltd", "Technology"),
 ]
 
-# Verified comprehensive mappings for all 89 constituents in 'SGX Index stock list.xlsx'
+# Verified comprehensive mappings for all constituents in 'stock list.xlsx' ('SGX' worksheet)
 # Mapping: Company Name in Excel -> (Code, Symbol, Security Type, Index, Is_STI30)
 SGX_INDEX_STOCK_MAPPINGS = {
     # --- 30 Straits Times Index (STI) Constituents ---
@@ -189,6 +189,11 @@ SGX_INDEX_STOCK_MAPPINGS = {
     "Golden Agri-Res": ("E5H", "E5H.SI", "stocks", "L & M Cap", False),
     "Sheng Siong": ("OV8", "OV8.SI", "stocks", "L & M Cap", False),
     "First Resources": ("EB5", "EB5.SI", "stocks", "L & M Cap", False),
+
+    # --- 3 Personal Additions ---
+    "Micro Mechanics": ("5DD", "5DD.SI", "stocks", "Personal", False),
+    "Jardine C&C": ("C07", "C07.SI", "stocks", "Personal", False),
+    "Rex International": ("5WH", "5WH.SI", "stocks", "Personal", False),
 }
 
 # Pre-compiled fallback list of all 89 index stocks
@@ -207,8 +212,14 @@ DEFAULT_SGX_INDEX_STOCKS = [
 
 def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Extract the list of stocks contained within the SGX Index stock list Excel file.
-    Searches candidate paths or uses embedded 89-stock list if Excel file is unavailable.
+    Extract the list of stocks contained within the shared 'stock list.xlsx' workbook's
+    'SGX' worksheet (Index, Company, and an optional Ticker column). Searches candidate
+    paths or uses the embedded index-stock list if the Excel file is unavailable.
+
+    A non-blank Ticker cell (e.g. '5DD.SI') is used directly - no name lookup needed.
+    A blank one falls back to matching the Company name against SGX_INDEX_STOCK_MAPPINGS
+    (exact, then fuzzy), and failing that, a crude best-guess from the name itself.
+
     Returns a list of dicts:
     [{'code': '...', 'symbol': '...SI', 'type': '...', 'name': '...', 'index': '...', 'is_sti30': bool}, ...]
     """
@@ -216,8 +227,8 @@ def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str
     if excel_path:
         candidate_paths.append(excel_path)
     candidate_paths.extend([
-        "SGX Index stock list.xlsx",
-        os.path.join(os.getcwd(), "SGX Index stock list.xlsx"),
+        "stock list.xlsx",
+        os.path.join(os.getcwd(), "stock list.xlsx"),
     ])
     try:
         # Relative to this script's own location, not a hardcoded machine/OS path -
@@ -226,7 +237,7 @@ def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str
         # this same code also runs via update_notebook.py's sync) there is no backing
         # file, so this candidate is simply skipped and the cwd/relative ones above cover it.
         candidate_paths.append(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "SGX Index stock list.xlsx")
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock list.xlsx")
         )
     except NameError:
         pass
@@ -238,13 +249,21 @@ def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str
             break
 
     if not resolved_path:
-        logger.warning("SGX Index stock list Excel file not found. Using embedded 89 index stocks.")
+        logger.warning("'stock list.xlsx' not found. Using embedded index stock list.")
         return list(DEFAULT_SGX_INDEX_STOCKS)
 
     try:
         import openpyxl
         wb = openpyxl.load_workbook(resolved_path)
-        sheet = wb["Sheet2"] if "Sheet2" in wb.sheetnames else wb.active
+        # "SGX" is the current worksheet name; "Sheet2" is kept as a fallback for
+        # older copies of this file that predate the rename, and wb.active as a
+        # last resort if neither name is present.
+        if "SGX" in wb.sheetnames:
+            sheet = wb["SGX"]
+        elif "Sheet2" in wb.sheetnames:
+            sheet = wb["Sheet2"]
+        else:
+            sheet = wb.active
         stocks = []
         seen_symbols = set()
 
@@ -259,8 +278,19 @@ def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str
             if len(non_none) >= 2:
                 idx = str(non_none[0]).strip()
                 comp = str(non_none[1]).strip()
+                # Optional 3rd column: a real ticker (e.g. '5DD.SI') straight from the
+                # sheet - present since the "Ticker" column was added. Present and
+                # non-blank takes priority over name-matching below; absent/blank falls
+                # back to it unchanged (so older rows/files without this column still work).
+                ticker = str(non_none[2]).strip() if len(non_none) >= 3 else None
 
-                if comp in SGX_INDEX_STOCK_MAPPINGS:
+                if ticker:
+                    sym = ticker
+                    code = sym.split(".")[0]
+                    dict_entry = SGX_INDEX_STOCK_MAPPINGS.get(comp)
+                    stype = dict_entry[2] if dict_entry else "stocks"
+                    is_sti = idx == "STI"
+                elif comp in SGX_INDEX_STOCK_MAPPINGS:
                     code, sym, stype, _, is_sti = SGX_INDEX_STOCK_MAPPINGS[comp]
                 else:
                     # Fuzzy match fallback
@@ -709,8 +739,8 @@ def extract_index_stocks(
 ) -> pd.DataFrame:
     """
     DEFAULT MODE:
-    1. Extracts the list of stocks contained within 'SGX Index stock list.xlsx'
-       (STI, S Cap, L & M Cap).
+    1. Extracts the list of stocks contained within 'stock list.xlsx''s 'SGX' worksheet
+       (STI, S Cap, L & M Cap, plus any Personal additions).
     2. Converts all market caps to SGD using Yahoo Finance native forex tickers (e.g. USDSGD=X).
     3. Fetches latest metrics (52W High, 52W Low, 52W Range, Proximity to 52W High,
        Trailing P/E, Sector, Industry, DividendYield).
@@ -1224,7 +1254,8 @@ def fetch_long_price_history(symbol: str, range_str: str = "5y", max_retries: in
 def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 5) -> pd.DataFrame:
     """
     Build a per-fiscal-year fundamentals table (chronological, oldest year first): Revenue,
-    Net Income, EPS, P/E, P/S, P/B, Gross Margin, Operating Margin, and Debt/Equity.
+    Net Income, EPS, Dividend Per Unit, P/E, P/S, P/B, Gross Margin, Operating Margin,
+    and Debt/Equity.
 
     Historical P/E, P/S, and P/B are approximations: each fiscal year's reported diluted
     EPS / average diluted shares / stockholders' equity is combined with the closing share
@@ -1232,9 +1263,16 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
     reporting currency (NOT SGD-normalised, unlike the Summary sheet's Market Cap column).
     Yahoo Finance's free annual statements go back up to 5 years for most tickers, but
     occasionally fewer - whatever is actually available (capped at max_years) is returned.
+
+    Dividend Per Unit is also an approximation, same spirit as P/E/P/S/P/B above: yfinance
+    doesn't expose a per-fiscal-year dividend figure directly (dividends aren't a line item
+    on the income statement or balance sheet), so each fiscal year's total is reconstructed
+    by summing `Ticker.dividends` (a real per-payment historical series, ex-dividend date ->
+    per-unit amount - "per unit" since many SGX constituents here are REITs/trusts) over
+    that fiscal year's ~12-month window.
     """
     columns = [
-        "FiscalYearEnd", "Revenue", "NetIncome", "EPS", "P/E", "P/S", "P/B",
+        "FiscalYearEnd", "Revenue", "NetIncome", "EPS", "DividendPerShare", "P/E", "P/S", "P/B",
         "GrossMargin", "OperatingMargin", "DebtToEquity", "Currency",
     ]
     empty = pd.DataFrame(columns=columns)
@@ -1274,7 +1312,16 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
 
         price_hist = fetch_long_price_history(symbol, range_str="5y")
 
+        try:
+            dividends = ticker.dividends
+            if dividends is not None and not dividends.empty:
+                dividends = dividends.copy()
+                dividends.index = pd.to_datetime(dividends.index).tz_localize(None)
+        except Exception:
+            dividends = None
+
         rows = []
+        prev_fye = None
         for period in periods:
             fye = period.date() if hasattr(period, "date") else period
             revenue = safe_float(revenue_row.get(period)) if revenue_row is not None else None
@@ -1296,11 +1343,25 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
             op_margin = (op_income / revenue * 100.0) if (op_income is not None and revenue not in (None, 0)) else None
             debt_to_equity = (debt / equity) if (debt is not None and equity not in (None, 0)) else None
 
+            # Dividend/Distribution Per Unit for this fiscal year: sum of per-unit dividend
+            # payments (ex-dividend date -> amount, from yfinance) falling within this fiscal
+            # year's ~12-month window - since the previous period's fiscal year-end if known,
+            # otherwise approximated as 1 year before this period's fiscal year-end.
+            dps = None
+            if dividends is not None and not dividends.empty:
+                window_end = pd.Timestamp(fye)
+                window_start = prev_fye if prev_fye is not None else (window_end - pd.DateOffset(years=1))
+                in_window = dividends[(dividends.index > window_start) & (dividends.index <= window_end)]
+                if not in_window.empty:
+                    dps = float(in_window.sum())
+            prev_fye = pd.Timestamp(fye)
+
             rows.append({
                 "FiscalYearEnd": fye.strftime("%Y-%m-%d") if hasattr(fye, "strftime") else str(fye),
                 "Revenue": revenue,
                 "NetIncome": net_income,
                 "EPS": round(eps, 2) if eps is not None else None,
+                "DividendPerShare": round(dps, 2) if dps is not None else None,
                 "P/E": round(pe, 2) if pe is not None else None,
                 "P/S": round(ps, 2) if ps is not None else None,
                 "P/B": round(pb, 2) if pb is not None else None,
@@ -1389,12 +1450,14 @@ def save_results(
 
             # Prepare formatted Summary DataFrame for Excel Sheet 1
             df_summary_fmt = df_summary.copy()
-            
-            # Format SharesOutstanding & Volume with B / M abbreviation in summary
-            if "SharesOutstanding" in df_summary_fmt.columns:
-                df_summary_fmt["SharesOutstanding"] = df_summary_fmt["SharesOutstanding"].apply(
-                    lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
-                )
+
+            # SharesOutstanding stays out of the Summary sheet specifically (still used
+            # internally to compute the 52W History sheet's Market Cap column, via the
+            # untouched df_summary passed into extract_52w_history_all before this point -
+            # dropping it only from this formatted copy doesn't affect that).
+            df_summary_fmt = df_summary_fmt.drop(columns=["SharesOutstanding"], errors="ignore")
+
+            # Format Volume with B / M abbreviation in summary
             if "Volume" in df_summary_fmt.columns:
                 df_summary_fmt["Volume"] = df_summary_fmt["Volume"].apply(
                     lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
@@ -1542,7 +1605,7 @@ def save_results(
                     hyperlink_font = Font(name="Calibri", size=11, color="0563C1", underline="single")
 
                     fin_metric_cols = [
-                        "Fiscal Year End", "Revenue", "Net Income", "EPS", "P/E", "P/S", "P/B",
+                        "Fiscal Year End", "Revenue", "Net Income", "EPS", "Dividend/Unit", "P/E", "P/S", "P/B",
                         "Gross Margin", "Operating Margin", "Debt/Equity",
                     ]
                     n_fin_cols = len(fin_metric_cols)
@@ -1582,6 +1645,7 @@ def save_results(
                                 format_currency(fin_row.get("Revenue"), currency) if pd.notnull(fin_row.get("Revenue")) else "N/A",
                                 format_currency(fin_row.get("NetIncome"), currency) if pd.notnull(fin_row.get("NetIncome")) else "N/A",
                                 f"{fin_row['EPS']:.2f}" if pd.notnull(fin_row.get("EPS")) else "N/A",
+                                f"{fin_row['DividendPerShare']:.2f}" if pd.notnull(fin_row.get("DividendPerShare")) else "N/A",
                                 f"{fin_row['P/E']:.2f}" if pd.notnull(fin_row.get("P/E")) else "N/A",
                                 f"{fin_row['P/S']:.2f}" if pd.notnull(fin_row.get("P/S")) else "N/A",
                                 f"{fin_row['P/B']:.2f}" if pd.notnull(fin_row.get("P/B")) else "N/A",
@@ -1752,13 +1816,13 @@ def main():
         type=str,
         choices=["index", "market-cap"],
         default="index",
-        help="Analysis mode: 'index' (default, uses SGX Index stock list) or 'market-cap' (scans entire SGX universe)."
+        help="Analysis mode: 'index' (default, uses the SGX worksheet in stock list.xlsx) or 'market-cap' (scans entire SGX universe)."
     )
     parser.add_argument(
         "--index-file",
         type=str,
-        default="SGX Index stock list.xlsx",
-        help="Path to the SGX Index stock list Excel file (default: 'SGX Index stock list.xlsx')."
+        default="stock list.xlsx",
+        help="Path to the shared stock list Excel file, 'SGX' worksheet (default: 'stock list.xlsx')."
     )
     parser.add_argument(
         "--workers",
@@ -1812,7 +1876,7 @@ def main():
         )
         sheet_title = f"Top {args.top} & STI Summary"
     else:
-        logger.info(f"Running SGX Analysis in DEFAULT INDEX mode (using SGX Index stock list: '{args.index_file}')...")
+        logger.info(f"Running SGX Analysis in DEFAULT INDEX mode (using stock list: '{args.index_file}')...")
         df_summary = extract_index_stocks(
             excel_path=args.index_file,
             max_workers=args.workers
