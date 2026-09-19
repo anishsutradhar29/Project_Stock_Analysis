@@ -40,9 +40,10 @@ directory — on any OS — has the same context as the session that wrote it.
   re-running the scripts, so they're deliberately not tracked.
 - `update_and_share.sh` — one-command "save progress" wrapper: runs
   `update_notebook.py`, compile-checks both scripts, `git add`/`commit`
-  (skipped if nothing changed) /`push`, then refreshes a shared Google Drive
-  copy of the notebook via `rclone` (see "Sharing workflow" below). Run this
-  instead of the individual steps whenever a script changes.
+  (skipped if nothing changed) /`push`, then refreshes the shared Google
+  Drive copies of both the notebook and `stock list.xlsx` via `rclone` (see
+  "Sharing workflow" below). Run this instead of the individual steps
+  whenever a script or the stock list changes.
 
 ## Running
 
@@ -242,7 +243,17 @@ constant — `FALLBACK_STI_30` / `FALLBACK_NIFTY_50` — through `def main():`,
 exclusive) into the notebook's two code cells, appends a short "run the
 pipeline and download" block, and refreshes the markdown description cells
 to match. It does **not** re-run the pipeline itself — it only regenerates
-the notebook's static cell contents. Sanity-check after running it:
+the notebook's static cell contents.
+
+The notebook has a fixed 9-cell layout the script addresses **by index**
+(intro=0, deps md/code=1/2, Drive-mount md/code=3/4, SGX md/code=5/6, NSE
+md/code=7/8) - the Drive-mount cell pair is inserted once, idempotently
+(checked via a "Mount Google Drive" string match at index 3), so re-running
+this script never duplicates it. If you ever restructure the notebook's
+cells by hand or add a new step, update these indices in
+`update_notebook.py` to match, or the wrong cell's source gets overwritten.
+
+Sanity-check after running it:
 
 ```
 python -m py_compile NSE_Stock_Analysis.py SGX_Stock_Analysis.py
@@ -272,6 +283,21 @@ Linux, so no Drive desktop install is needed.
 each time (`rclone copyto`), overwriting its content in place rather than
 creating a new file — this keeps the same Drive file ID, so a share link
 already handed to someone keeps working without re-sharing after updates.
+It does the same for `stock list.xlsx`, uploaded to the same Drive folder
+(`Colab Notebooks/Project_Stock_Analysis/`) right after the notebook.
+
+**Why `stock list.xlsx` also needs to be on Drive, not just GitHub:** a
+Colab session started from the Drive-hosted notebook has no link back to
+this GitHub repo or your local disk — it's a fresh, empty runtime. The
+notebook's **Step 2** cell mounts Drive and copies `stock list.xlsx` from
+that same Drive folder into the session's working directory before SGX/NSE
+run, so personal stock additions don't need re-uploading by hand each
+session. That cell fails soft (prints a message, doesn't error) if it's not
+running in Colab or the file isn't in Drive yet — SGX falls back to its
+embedded list either way; NSE just skips personal additions for that run.
+The Drive path is hardcoded in that cell (`update_notebook.py`'s
+`drive_step_code`) to match wherever `update_and_share.sh` uploads it -
+keep both in sync if that folder path ever changes.
 
 ## Known open item
 

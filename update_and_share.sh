@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regenerates the notebook from the .py scripts, commits + pushes to GitHub,
-# and refreshes the shared Google Drive copy — all in one go.
+# and refreshes the shared Google Drive copies of both the notebook and
+# stock list.xlsx — all in one go.
 #
 # Usage:
 #   ./update_and_share.sh "commit message here"
@@ -35,8 +36,12 @@ fi
 echo "==> Pushing to GitHub"
 git push
 
-echo "==> Refreshing shared Google Drive copy"
+echo "==> Refreshing shared Google Drive copy of the notebook"
 rclone copyto Stock_Market_Analysis_SGX_NSE.ipynb \
     "gdrive:Colab Notebooks/Project_Stock_Analysis/Stock_Market_Analysis_SGX_NSE.ipynb"
+
+echo "==> Refreshing shared Google Drive copy of stock list.xlsx"
+rclone copyto "stock list.xlsx" \
+    "gdrive:Colab Notebooks/Project_Stock_Analysis/stock list.xlsx"
 
 echo "==> Done."

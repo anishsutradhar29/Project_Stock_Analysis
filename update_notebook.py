@@ -105,9 +105,69 @@ except ImportError:
     with open(nb_path, "r", encoding="utf-8") as f:
         nb = json.load(f)
 
+    # Insert the "Step 2: Mount Google Drive" markdown+code cell pair right after the
+    # dependency-install cell (index 2), if not already present there - keeps re-running
+    # this script idempotent instead of duplicating the cells on every sync. Both SGX and
+    # NSE read 'stock list.xlsx' from the current working directory, so mounting Drive and
+    # copying the file in once here (rather than editing either script) is all that's
+    # needed - see CLAUDE.md's "Shared stock list.xlsx" / "Sharing workflow" sections.
+    drive_step_present = (
+        len(nb["cells"]) > 3
+        and "Mount Google Drive" in "".join(nb["cells"][3].get("source", []))
+    )
+    if not drive_step_present:
+        drive_step_md = """## 📁 Step 2: Mount Google Drive (for stock list.xlsx)
+Execute the cell below once per session to pull the latest `stock list.xlsx`
+(SGX index + each script's personal stock additions) from Google Drive into this
+Colab session - `update_and_share.sh` re-uploads it there automatically whenever
+it changes locally, so this should always be the current version.
+
+Safe to skip or fail: outside Colab, or if Drive doesn't have the file, this just
+prints a message and both pipelines fall back to whatever's already in the working
+directory (SGX has an embedded fallback list either way; NSE simply skips personal
+additions for that run - see the project's `CLAUDE.md` for details).
+"""
+        drive_step_code = """# --- Mount Google Drive (Colab only) and fetch the shared stock list.xlsx,
+# so personal stock additions are available without manually re-uploading it each
+# session. Safe outside Colab or without Drive access - just leaves whatever's
+# already in the working directory untouched. ---
+import shutil
+
+DRIVE_STOCK_LIST_PATH = "/content/drive/MyDrive/Colab Notebooks/Project_Stock_Analysis/stock list.xlsx"
+
+try:
+    from google.colab import drive
+    drive.mount('/content/drive')
+    if os.path.exists(DRIVE_STOCK_LIST_PATH):
+        shutil.copy(DRIVE_STOCK_LIST_PATH, "stock list.xlsx")
+        print("✅ Copied 'stock list.xlsx' from Google Drive.")
+    else:
+        print(f"⚠️ 'stock list.xlsx' not found in Drive at: {DRIVE_STOCK_LIST_PATH}")
+        print("   SGX will fall back to its embedded list; NSE will skip personal additions.")
+except ImportError:
+    print("Not running in Google Colab - using whatever 'stock list.xlsx' is already in the working directory (if any).")
+"""
+        nb["cells"][3:3] = [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [line + "\n" for line in drive_step_md.split("\n")][:-1],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "metadata": {},
+                "outputs": [],
+                "source": [line + ("\n" if not line.endswith("\n") else "") for line in drive_step_code.split("\n")],
+            },
+        ]
+
     # JSON represents lines as a list of strings with newlines for code cells, or just a single string. Let's make it a list or a string.
-    nb["cells"][4]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in sgx_full_code.split("\n")]
-    nb["cells"][6]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in nse_full_code.split("\n")]
+    # Cell indices below account for the two-cell "Mount Google Drive" step inserted
+    # above at position 3: intro=0, deps md/code=1/2, drive md/code=3/4, then
+    # SGX md/code=5/6, NSE md/code=7/8 (was 3/4/5/6 before that step existed).
+    nb["cells"][6]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in sgx_full_code.split("\n")]
+    nb["cells"][8]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in nse_full_code.split("\n")]
 
     # Keep the intro / step markdown cells in sync with what the pipeline actually does now.
     intro_md = """# 📈 SGX & NSE Stock Market Capitalization & Historical Analysis
@@ -123,16 +183,16 @@ This Google Colab notebook extracts live fundamentals, 52-week pricing metrics, 
   - **Sheet 2 (`52W Daily History`)**: Horizontal time-series layout with 2-tier merged headers (`CODE - Name` over metric sub-columns `Close`, `% Change`, `Market Cap`, `Shares Out.`, `Volume`).
   - **Sheet 3 (`Financials Detail`)**: A stacked 5-year fundamentals block per company (Revenue, Net Income, EPS, P/E, P/S, P/B, Gross/Operating Margin, Debt/Equity) — click any company's **Name** on the Summary sheet to jump straight there.
   - **Sheet 4 (`Price Charts`)**: A compact 1-year closing-price line chart per company — click any company's **Symbol** on the Summary sheet (or its header on the 52W Daily History sheet) to jump straight to its chart.
-- **Google Colab Ready**: Includes automatic direct file download triggers for Colab environments.
+- **Google Colab Ready**: Includes automatic direct file download triggers for Colab environments, and mounts Google Drive to pull the latest `stock list.xlsx` (Step 2).
 """
-    sgx_step_md = """## 🇸🇬 Step 2: Singapore Exchange (SGX Index: STI + S Cap + L & M Cap)
+    sgx_step_md = """## 🇸🇬 Step 3: Singapore Exchange (SGX Index: STI + S Cap + L & M Cap)
 Execute the cell below to run the SGX extraction pipeline. It will:
 1. Load the SGX index constituents, plus any personal additions, from `stock list.xlsx`'s `SGX` worksheet (falls back to an embedded list if the file isn't uploaded).
 2. Convert every market cap to SGD using live Yahoo Finance forex rates.
 3. Extract snapshot metrics, 52-week historical daily prices, and 5-year fundamentals history.
 4. Generate and download `SGX_Stock_Analysis_YYYY-MM-DD.xlsx` (Summary → Financials Detail → Price Charts, all cross-linked).
 """
-    nse_step_md = """## 🇮🇳 Step 3: Indian Stock Exchange (NSE Top 80 + NIFTY 50)
+    nse_step_md = """## 🇮🇳 Step 4: Indian Stock Exchange (NSE Top 80 + NIFTY 50)
 Execute the cell below to run the NSE extraction pipeline.
 
 **Mode Options:**
@@ -143,8 +203,8 @@ Execute the cell below to run the NSE extraction pipeline.
 Also extracts 52-week historical daily prices and 5-year fundamentals history, producing the same Summary → Financials Detail → Price Charts cross-linked layout as the SGX workbook.
 """
     nb["cells"][0]["source"] = [line + "\n" for line in intro_md.split("\n")][:-1]
-    nb["cells"][3]["source"] = [line + "\n" for line in sgx_step_md.split("\n")][:-1]
-    nb["cells"][5]["source"] = [line + "\n" for line in nse_step_md.split("\n")][:-1]
+    nb["cells"][5]["source"] = [line + "\n" for line in sgx_step_md.split("\n")][:-1]
+    nb["cells"][7]["source"] = [line + "\n" for line in nse_step_md.split("\n")][:-1]
 
     with open(nb_path, "w", encoding="utf-8") as f:
         json.dump(nb, f, indent=1)
