@@ -54,9 +54,6 @@ python SGX_Stock_Analysis.py [--mode index|market-cap] [--index-file "stock list
                               [--no-financials] [--financials-years 5] [--output FILE.xlsx]
 ```
 
-NSE also accepts `--stock-list-file "stock list.xlsx"` (same file, `NSE` worksheet,
-purely additive - see "Shared stock list.xlsx" below).
-
 Default output is `<NSE|SGX>_Stock_Analysis_<today>.xlsx`. Both scripts also
 accept `.csv`/`.json` output, in which case the fundamentals/chart sheets
 below don't apply (Excel-only features).
@@ -171,18 +168,23 @@ One workbook, two worksheets, read very differently by the two scripts:
   (currently 3: Micro Mechanics, Jardine C&C, Rex International). If the file
   is missing entirely, falls back to an embedded copy of the same data
   (`DEFAULT_SGX_INDEX_STOCKS`).
-- **`NSE` worksheet** is **purely additive** for `extract_top80_with_nifty50()`
-  - NSE already has a full stock universe (NIFTY 50 + Top N market-cap
-    ranking) without this file. Rows here (currently 8 personal picks) are
-  merged into the fetch pass and *guaranteed* to appear in the final output,
-  same mechanism already used to guarantee NIFTY 50 constituents that fall
-  outside the Top N: tagged `Inclusion_Reason = "Personal"`, or `"<existing
-  reason> + Personal"` if the stock already qualified another way (e.g. also
-  Top 80). If the file or `NSE` worksheet is missing, personal additions are
-  silently skipped - no embedded fallback here, since NSE doesn't need one.
+- **`NSE` worksheet is no longer read by the script.** NSE's personal stock
+  additions (8 picks) are now hardcoded directly in `NSE_Stock_Analysis.py` as
+  `PERSONAL_NSE_STOCKS`, a pre-compiled list derived straight from
+  `NSE_PERSONAL_STOCK_MAPPINGS` - the same "no file I/O, always present"
+  pattern as SGX's `DEFAULT_SGX_INDEX_STOCKS`. They're merged into the fetch
+  pass and *guaranteed* to appear in the final output, same mechanism already
+  used to guarantee NIFTY 50 constituents that fall outside the Top N: tagged
+  `Inclusion_Reason = "Personal"`, or `"<existing reason> + Personal"` if the
+  stock already qualified another way (e.g. also Top 80). The `NSE` worksheet
+  in `stock list.xlsx` still exists in the file for reference, but nothing
+  reads it anymore - **to add a new NSE personal stock now, edit
+  `NSE_PERSONAL_STOCK_MAPPINGS` directly**, the same workflow SGX already uses
+  for stocks not resolvable by name.
 
-Each row is `Index`/`Inclusion reason` + `Company` + an optional **`Ticker`**
-column (added after the two loaders originally only matched by Company name):
+The `SGX` worksheet is still read the same way as before. Each row is
+`Index`/`Inclusion reason` + `Company` + an optional **`Ticker`** column
+(added after the loader originally only matched by Company name):
 
 - **A non-blank Ticker cell (e.g. `5DD.SI`, `ACC.NS`) is used directly** -
   the real yfinance symbol, no name lookup involved. This is the preferred
@@ -245,12 +247,17 @@ pipeline and download" block, and refreshes the markdown description cells
 to match. It does **not** re-run the pipeline itself — it only regenerates
 the notebook's static cell contents.
 
-The notebook has a fixed 9-cell layout the script addresses **by index**
-(intro=0, deps/imports md/code=1/2, Drive-mount md/code=3/4, SGX md/code=5/6,
-NSE md/code=7/8) - the Drive-mount cell pair is inserted once, idempotently
-(checked via a "Mount Google Drive" string match at index 3), so re-running
-this script never duplicates it. Cell 2 (shared `pip install` + imports +
-logging/warnings setup, used by both SGX and NSE) is hand-composed in
+The notebook has a fixed 7-cell layout the script addresses **by index**
+(intro=0, deps/imports md/code=1/2, SGX md/code=3/4, NSE md/code=5/6). An
+earlier revision of this project inserted a Drive-mount cell pair at index 3
+(to pull `stock list.xlsx` from Google Drive for NSE's personal additions) -
+that's been removed now that NSE's personal additions are hardcoded (see
+"Shared stock list.xlsx" below), so neither script needs the file at
+runtime. `update_notebook.py` still checks for and strips that old cell pair
+if it finds one (idempotently, via a "Mount Google Drive" string match at
+index 3), so an older copy of the notebook self-heals on the next sync.
+Cell 2 (shared `pip install` + imports + logging/warnings setup, used by
+both SGX and NSE) is hand-composed in
 `update_notebook.py` rather than sliced from either script - each script has
 its own copy of this same setup (both must stay independently runnable), so
 the notebook consolidates it once rather than importing everything twice in
@@ -294,18 +301,13 @@ already handed to someone keeps working without re-sharing after updates.
 It does the same for `stock list.xlsx`, uploaded to the same Drive folder
 (`Colab Notebooks/Project_Stock_Analysis/`) right after the notebook.
 
-**Why `stock list.xlsx` also needs to be on Drive, not just GitHub:** a
-Colab session started from the Drive-hosted notebook has no link back to
-this GitHub repo or your local disk — it's a fresh, empty runtime. The
-notebook's **Step 2** cell mounts Drive and copies `stock list.xlsx` from
-that same Drive folder into the session's working directory before SGX/NSE
-run, so personal stock additions don't need re-uploading by hand each
-session. That cell fails soft (prints a message, doesn't error) if it's not
-running in Colab or the file isn't in Drive yet — SGX falls back to its
-embedded list either way; NSE just skips personal additions for that run.
-The Drive path is hardcoded in that cell (`update_notebook.py`'s
-`drive_step_code`) to match wherever `update_and_share.sh` uploads it -
-keep both in sync if that folder path ever changes.
+**`stock list.xlsx` is no longer required for the notebook to run** — SGX
+still reads it if present (falling back to its embedded list otherwise), and
+NSE's personal additions are now fully hardcoded (see "Shared stock
+list.xlsx" above), so a Colab session started from the Drive-hosted notebook
+never needs this file. It's still uploaded to Drive on every
+`update_and_share.sh` run purely as a convenience backup copy alongside the
+notebook, not because anything reads it from there anymore.
 
 ## Known open item
 

@@ -107,12 +107,11 @@ FALLBACK_NIFTY_50 = [
     ("BEL", "Bharat Electronics Ltd", "Capital Goods"),
 ]
 
-# Personal stock additions: company names (as they appear in the "Company" column
-# of stock list.xlsx's "NSE" worksheet) -> (Code, Display Name). These are guaranteed
-# inclusion in the final output (Inclusion_Reason "Personal"), same idea as the NIFTY 50
-# guarantee below, but purely additive - unlike SGX's index list, the NSE pipeline
-# already has a full stock universe without this file, so there's no embedded fallback
-# list here; if the file/sheet is missing, personal additions are simply skipped.
+# Personal stock additions: company name -> (Code, Display Name). Guaranteed inclusion
+# in the final output (Inclusion_Reason "Personal"), same idea as the NIFTY 50 guarantee
+# below. Hardcoded directly here rather than read from stock list.xlsx, same pattern as
+# SGX's DEFAULT_SGX_INDEX_STOCKS - no file I/O, so these are always present regardless of
+# machine or Colab session, with no dependency on Google Drive.
 NSE_PERSONAL_STOCK_MAPPINGS = {
     "ACC LTD": ("ACC", "ACC Ltd"),
     "AMBUJA CEMENTS LTD": ("AMBUJACEM", "Ambuja Cements Ltd"),
@@ -123,6 +122,12 @@ NSE_PERSONAL_STOCK_MAPPINGS = {
     "MARICO LTD (MARICO INDUSTRIES LTD)": ("MARICO", "Marico Ltd"),
     "SIEMENS ENERGY INDIA LIMITED": ("ENRIN", "Siemens Energy India Ltd"),
 }
+
+# Pre-compiled personal stock list, derived directly from the mapping above.
+PERSONAL_NSE_STOCKS = [
+    {"code": code, "symbol": f"{code}.NS", "name": display_name}
+    for code, display_name in NSE_PERSONAL_STOCK_MAPPINGS.values()
+]
 
 
 def clean_text(text: str) -> str:
@@ -222,99 +227,6 @@ def get_nifty50_tickers(with_suffix: bool = True, timeout: int = 10) -> List[str
 
     logger.info("Using hardcoded fallback list for NIFTY 50 constituents.")
     return [f"{code}.NS" if with_suffix else code for code, _, _ in FALLBACK_NIFTY_50]
-
-
-def load_nse_personal_stocks(excel_path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    Extract personal stock additions from the shared 'stock list.xlsx' workbook's
-    'NSE' worksheet (Inclusion reason, Company, and an optional Ticker column).
-    Purely additive - if the file or sheet isn't present, returns an empty list
-    rather than falling back to anything, since the rest of the pipeline already
-    has a full stock universe without it.
-
-    A non-blank Ticker cell (e.g. 'ACC.NS') is used directly - no name lookup
-    needed. A blank one falls back to matching the Company name against
-    NSE_PERSONAL_STOCK_MAPPINGS; unmatched rows are skipped with a warning.
-
-    Returns a list of dicts: [{'code': '...', 'symbol': '...NS', 'name': '...'}, ...]
-    """
-    candidate_paths = []
-    if excel_path:
-        candidate_paths.append(excel_path)
-    candidate_paths.extend([
-        "stock list.xlsx",
-        os.path.join(os.getcwd(), "stock list.xlsx"),
-    ])
-    try:
-        # See the matching note in SGX_Stock_Analysis.py's load_sgx_index_stock_list:
-        # __file__ is only defined when running as a real .py file, not inside a
-        # notebook cell - this candidate is simply skipped there.
-        candidate_paths.append(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock list.xlsx")
-        )
-    except NameError:
-        pass
-
-    resolved_path = None
-    for p in candidate_paths:
-        if p and os.path.exists(p):
-            resolved_path = p
-            break
-
-    if not resolved_path:
-        logger.info("'stock list.xlsx' not found - skipping personal stock additions.")
-        return []
-
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(resolved_path)
-        if "NSE" not in wb.sheetnames:
-            logger.info("'stock list.xlsx' has no 'NSE' worksheet - skipping personal stock additions.")
-            return []
-        sheet = wb["NSE"]
-
-        stocks = []
-        seen_codes = set()
-        for row in sheet.iter_rows(values_only=True):
-            if not any(row):
-                continue
-            vals = [str(c).strip() for c in row if c is not None]
-            if "Company" in vals and ("Inclusion reason" in vals or "Inclusion Reason" in vals):
-                continue  # header row
-
-            non_none = [c for c in row if c is not None]
-            if len(non_none) < 2:
-                continue
-            comp = str(non_none[1]).strip()
-            # Optional 3rd column: a real ticker (e.g. 'ACC.NS') straight from the sheet -
-            # present since the "Ticker" column was added. Present and non-blank takes
-            # priority over name-matching below; absent/blank falls back to it unchanged.
-            ticker = str(non_none[2]).strip() if len(non_none) >= 3 else None
-
-            if ticker:
-                sym = ticker
-                code = sym.split(".")[0]
-                dict_entry = NSE_PERSONAL_STOCK_MAPPINGS.get(comp.upper())
-                display_name = dict_entry[1] if dict_entry else comp
-            else:
-                mapping = NSE_PERSONAL_STOCK_MAPPINGS.get(comp.upper())
-                if mapping is None:
-                    logger.warning(f"No NSE ticker mapping for personal stock '{comp}' - skipping (add a Ticker column value, or add it to NSE_PERSONAL_STOCK_MAPPINGS).")
-                    continue
-                code, display_name = mapping
-                sym = f"{code}.NS"
-
-            if code not in seen_codes:
-                stocks.append({"code": code, "symbol": sym, "name": display_name})
-                seen_codes.add(code)
-
-        if stocks:
-            logger.info(f"Loaded {len(stocks)} personal stock(s) from '{resolved_path}' ('NSE' worksheet).")
-        return stocks
-
-    except Exception as e:
-        logger.warning(f"Error reading personal stocks from '{resolved_path}': {e}. Skipping personal additions.")
-        return []
 
 
 def get_nse_universe(nifty50_codes: Set[str], mode: str = "robust") -> List[Dict[str, Any]]:
@@ -577,12 +489,11 @@ def extract_top80_with_nifty50(
     max_workers: int = 10,
     top_n: int = 80,
     mode: str = "robust",
-    stock_list_file: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Extract Top 80 NSE companies by market cap + guaranteed inclusion of all NIFTY 50
-    constituents + guaranteed inclusion of any "Personal" stocks from stock list.xlsx's
-    'NSE' worksheet. Supports mode: 'fast' (Nifty 100), 'robust' (Nifty 200, default),
+    constituents + guaranteed inclusion of the hardcoded PERSONAL_NSE_STOCKS list.
+    Supports mode: 'fast' (Nifty 100), 'robust' (Nifty 200, default),
     'full' (all 2,550+ stocks).
     """
     start_time = time.time()
@@ -598,7 +509,7 @@ def extract_top80_with_nifty50(
     # Merge in any personal stocks not already covered by the broad universe above,
     # so they get fetched and ranked in the same pass (same guarantee pattern used
     # for NIFTY 50 further below).
-    personal_stocks = load_nse_personal_stocks(excel_path=stock_list_file)
+    personal_stocks = PERSONAL_NSE_STOCKS
     personal_codes = {p["code"] for p in personal_stocks}
     existing_codes = {s["code"] for s in securities}
     for p in personal_stocks:
@@ -690,10 +601,10 @@ def extract_top80_with_nifty50(
         logger.info(f"All 50 NIFTY constituents are already present in the Top {top_n}!")
         combined_df = top_n_df
 
-    # 7. Guarantee inclusion of "Personal" stocks (from stock list.xlsx's 'NSE'
-    #    worksheet), same pattern as the NIFTY 50 guarantee above. A stock already
-    #    present for another reason (e.g. NIFTY 50 or Top N) keeps that reason and
-    #    gets "+ Personal" appended, rather than losing the original context.
+    # 7. Guarantee inclusion of the hardcoded PERSONAL_NSE_STOCKS list, same pattern
+    #    as the NIFTY 50 guarantee above. A stock already present for another reason
+    #    (e.g. NIFTY 50 or Top N) keeps that reason and gets "+ Personal" appended,
+    #    rather than losing the original context.
     if personal_codes:
         in_combined_mask = combined_df["Code"].isin(personal_codes)
         combined_df.loc[in_combined_mask, "Inclusion_Reason"] = combined_df.loc[in_combined_mask, "Inclusion_Reason"].apply(
@@ -1586,12 +1497,6 @@ def main():
         default="robust",
         help="Scanning mode: 'fast' (NIFTY 100 ~100 stocks), 'robust' (NIFTY 200 ~200 stocks, default), 'full' (Entire NSE ~2,550+ stocks)."
     )
-    parser.add_argument(
-        "--stock-list-file",
-        type=str,
-        default="stock list.xlsx",
-        help="Path to the shared stock list Excel file, 'NSE' worksheet, for personal stock additions (default: 'stock list.xlsx')."
-    )
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     default_filename = f"NSE_Stock_Analysis_{today_str}.xlsx"
 
@@ -1627,7 +1532,6 @@ def main():
         max_workers=args.workers,
         top_n=args.top,
         mode=args.mode,
-        stock_list_file=args.stock_list_file
     )
 
     print_top80_nifty_table(df_summary)
