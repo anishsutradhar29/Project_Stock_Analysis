@@ -246,10 +246,18 @@ to match. It does **not** re-run the pipeline itself — it only regenerates
 the notebook's static cell contents.
 
 The notebook has a fixed 9-cell layout the script addresses **by index**
-(intro=0, deps md/code=1/2, Drive-mount md/code=3/4, SGX md/code=5/6, NSE
-md/code=7/8) - the Drive-mount cell pair is inserted once, idempotently
+(intro=0, deps/imports md/code=1/2, Drive-mount md/code=3/4, SGX md/code=5/6,
+NSE md/code=7/8) - the Drive-mount cell pair is inserted once, idempotently
 (checked via a "Mount Google Drive" string match at index 3), so re-running
-this script never duplicates it. If you ever restructure the notebook's
+this script never duplicates it. Cell 2 (shared `pip install` + imports +
+logging/warnings setup, used by both SGX and NSE) is hand-composed in
+`update_notebook.py` rather than sliced from either script - each script has
+its own copy of this same setup (both must stay independently runnable), so
+the notebook consolidates it once rather than importing everything twice in
+the same kernel. It's still templated in `update_notebook.py` and rewritten
+on every sync, same as every other cell - **not** meant to be hand-edited in
+the `.ipynb` either, even though it isn't literally sliced from a `.py` file.
+If you ever restructure the notebook's
 cells by hand or add a new step, update these indices in
 `update_notebook.py` to match, or the wrong cell's source gets overwritten.
 

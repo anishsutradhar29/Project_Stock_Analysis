@@ -101,6 +101,50 @@ except ImportError:
 """
     nse_full_code = "# --- NSE Analysis Engine ---\n" + "".join(nse_code_lines) + nse_exec
 
+    # Shared "Step 1" cell: pip install + the imports/logging setup both scripts need,
+    # consolidated once since both run in the same Colab kernel (no need to import
+    # pandas/yfinance twice). This is hand-composed, not sliced from either .py file
+    # (each script has its own copy of this same setup, since both must stay
+    # independently runnable per CLAUDE.md) - kept here rather than left as a bare
+    # hand-edited notebook cell, so it goes through the same sync path as everything
+    # else and doesn't quietly drift from what the two scripts actually need.
+    shared_setup_code = """!pip install -q yfinance openpyxl beautifulsoup4 pandas requests
+
+import os
+import re
+import sys
+import time
+import datetime
+import logging
+import warnings
+from typing import List, Dict, Any, Optional, Set
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import yfinance as yf
+
+# Suppress minor yfinance scraping warnings and logger noise
+warnings.filterwarnings('ignore', category=FutureWarning)
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+
+# Suppress Colab/Jupyter's own internal datetime.utcnow() DeprecationWarning
+# noise (from jupyter_client's message-timestamping code - not this project's
+# code, and not fixable from here; see CLAUDE.md). Purely cosmetic, but it
+# clutters cell output enough to make the actual pipeline logs hard to read.
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger('StockAnalysis')
+print('✅ All libraries successfully imported!')
+"""
+
     # Update notebook
     with open(nb_path, "r", encoding="utf-8") as f:
         nb = json.load(f)
@@ -166,6 +210,7 @@ except ImportError:
     # Cell indices below account for the two-cell "Mount Google Drive" step inserted
     # above at position 3: intro=0, deps md/code=1/2, drive md/code=3/4, then
     # SGX md/code=5/6, NSE md/code=7/8 (was 3/4/5/6 before that step existed).
+    nb["cells"][2]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in shared_setup_code.split("\n")]
     nb["cells"][6]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in sgx_full_code.split("\n")]
     nb["cells"][8]["source"] = [line + ("\n" if not line.endswith("\n") else "") for line in nse_full_code.split("\n")]
 
