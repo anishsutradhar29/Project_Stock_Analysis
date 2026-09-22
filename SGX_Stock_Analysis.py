@@ -1447,6 +1447,7 @@ def save_results(
         try:
             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
+            from openpyxl.worksheet.table import Table, TableStyleInfo
 
             # Prepare formatted Summary DataFrame for Excel Sheet 1
             df_summary_fmt = df_summary.copy()
@@ -1487,6 +1488,21 @@ def save_results(
                     cell.alignment = center_align
                     col_letter = get_column_letter(col_num)
                     ws_summary.column_dimensions[col_letter].width = max(12, len(str(cell.value or "")) + 3)
+
+                # Format the Summary sheet's full range as a real Excel Table (not just
+                # colored header cells) - gives it native header filter/sort dropdowns and
+                # banded rows for free, no manual autofilter/formatting needed. Direct cell
+                # formatting (the navy header fill/font above) still renders on top of the
+                # table style, so the header keeps its look.
+                if not df_summary_fmt.empty:
+                    last_col_letter = get_column_letter(len(df_summary_fmt.columns))
+                    last_row = len(df_summary_fmt) + 1
+                    summary_table = Table(displayName="SummaryTable", ref=f"A1:{last_col_letter}{last_row}")
+                    summary_table.tableStyleInfo = TableStyleInfo(
+                        name="TableStyleMedium9", showRowStripes=True, showColumnStripes=False
+                    )
+                    ws_summary.add_table(summary_table)
+                    ws_summary.freeze_panes = "A2"
 
                 # 2. Write formatted 52W Daily History Sheet
                 history_ws = None
