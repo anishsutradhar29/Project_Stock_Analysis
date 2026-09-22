@@ -1,6 +1,7 @@
 # Generated pipeline outputs (not source of truth — regenerate by running the scripts)
-NSE_Stock_Analysis_*.xlsx
-SGX_Stock_Analysis_*.xlsx
+# Covers custom --output filenames too, not just the default NSE/SGX_Stock_Analysis_*.xlsx names
+*.xlsx
+!stock list.xlsx
 *.csv
 *.json
 
@@ -11,6 +12,7 @@ SGX_Stock_Analysis_*.xlsx
 __pycache__/
 *.pyc
 .venv/
+venv/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
