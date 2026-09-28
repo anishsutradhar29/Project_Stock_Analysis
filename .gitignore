@@ -11,8 +11,10 @@
 # Python
 __pycache__/
 *.pyc
-.venv/
 venv/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
+
+# Archive
+archive/
