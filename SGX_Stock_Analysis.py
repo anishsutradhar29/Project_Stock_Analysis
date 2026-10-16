@@ -1211,6 +1211,60 @@ def fetch_fx_history(from_ccy: str, to_ccy: str, range_str: str = "5y") -> pd.Da
     return hist
 
 
+def _within_ratio(value: float, target: float, tolerance: float = 0.15) -> bool:
+    """True if value/target is within +/-tolerance (multiplicatively) of 1, both positive."""
+    if value <= 0 or target <= 0:
+        return False
+    return 1.0 / (1.0 + tolerance) <= value / target <= 1.0 + tolerance
+
+
+def reconcile_eps_and_shares(
+    symbol: str, fye, eps: Optional[float], shares: Optional[float],
+    net_income: Optional[float], later_split_factor: float = 1.0,
+):
+    """
+    Cross-check one fiscal year's EPS and share count against net income (EPS x shares
+    should be ~net income) and fix two known Yahoo data glitches, returning (eps, shares):
+
+    - Share count not adjusted for a split/bonus issue that happened *after* this fiscal
+      year (e.g. HDFC Bank FY2023-24 vs its Aug 2025 2-for-1 split): EPS x shares comes out
+      ~1/split-ratio of net income -> shares are multiplied by the split ratio. The reverse
+      (EPS left unadjusted, shares adjusted) divides EPS by the ratio instead.
+    - EPS reported in cents instead of whole units (e.g. Prime US REIT FY2022): EPS x shares
+      comes out ~100x net income -> EPS is divided by 100.
+
+    later_split_factor is the product of all split ratios dated after this fiscal year-end
+    (1.0 = no later split). Any other mismatch is left untouched and only logged, since the
+    numbers alone can't say which side is wrong (REITs, for instance, often differ a little
+    because part of net income goes to perpetual-securities holders, not unitholders).
+    """
+    if not eps or not shares or not net_income:
+        return eps, shares
+    ratio = eps * shares / net_income
+    if _within_ratio(ratio, 1.0):
+        return eps, shares
+    if later_split_factor != 1.0 and _within_ratio(ratio, 1.0 / later_split_factor):
+        logger.info(
+            f"{symbol} FY{fye}: share count looks unadjusted for a later split "
+            f"(x{later_split_factor:g}) - adjusting shares to match EPS"
+        )
+        return eps, shares * later_split_factor
+    if later_split_factor != 1.0 and _within_ratio(ratio, later_split_factor):
+        logger.info(
+            f"{symbol} FY{fye}: EPS looks unadjusted for a later split "
+            f"(x{later_split_factor:g}) - adjusting EPS to match shares"
+        )
+        return eps / later_split_factor, shares
+    if _within_ratio(ratio, 100.0):
+        logger.info(f"{symbol} FY{fye}: EPS looks like it's in cents (100x net income/shares) - dividing by 100")
+        return eps / 100.0, shares
+    logger.info(
+        f"{symbol} FY{fye}: EPS x shares is {ratio:.2f}x net income - left as reported "
+        f"(P/E uses EPS; P/S and P/B use the share count)"
+    )
+    return eps, shares
+
+
 def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 5) -> pd.DataFrame:
     """
     Build a per-fiscal-year fundamentals table (chronological, oldest year first): Revenue,
@@ -1301,6 +1355,16 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
         except Exception:
             dividends = None
 
+        # Split/bonus-issue history, used to spot a fiscal year whose share count (or EPS)
+        # Yahoo left unadjusted for a later split - see reconcile_eps_and_shares.
+        try:
+            splits = ticker.splits
+            if splits is not None and not splits.empty:
+                splits = splits.copy()
+                splits.index = pd.to_datetime(splits.index).tz_localize(None)
+        except Exception:
+            splits = None
+
         rows = []
         prev_fye = None
         for period in periods:
@@ -1313,6 +1377,13 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
             shares = safe_float(shares_row.get(period)) if shares_row is not None else None
             equity = safe_float(equity_row.get(period)) if equity_row is not None else None
             debt = safe_float(debt_row.get(period)) if debt_row is not None else None
+
+            later_split_factor = 1.0
+            if splits is not None and not splits.empty:
+                for split_ratio in splits[splits.index > pd.Timestamp(fye)]:
+                    if split_ratio and split_ratio > 0:
+                        later_split_factor *= float(split_ratio)
+            eps, shares = reconcile_eps_and_shares(symbol, fye, eps, shares, net_income, later_split_factor)
 
             fx_rate = 1.0 if fx_hist is None else get_price_on_or_before(fx_hist, fye)
             price = get_price_on_or_before(price_hist, fye)
