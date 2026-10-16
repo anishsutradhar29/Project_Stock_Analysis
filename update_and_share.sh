@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Regenerates the notebook from the .py scripts, commits + pushes to GitHub,
+# Regenerates both scripts' stock lists from stock list.xlsx, then the notebook
+# from the .py scripts, commits + pushes to GitHub,
 # and refreshes the shared Google Drive copies of both the notebook and
 # stock list.xlsx — all in one go.
 #
@@ -17,11 +18,16 @@ if [ -z "$COMMIT_MSG" ]; then
     read -rp "Commit message: " COMMIT_MSG
 fi
 
-echo "==> Syncing notebook from the .py scripts (update_notebook.py)"
-python3 update_notebook.py
+# Use the project's venv Python (has openpyxl, needed to read stock list.xlsx);
+# fall back to the system python3 on machines without a venv/ folder.
+PY="venv/bin/python"
+[ -x "$PY" ] || PY="python3"
 
-echo "==> Sanity-checking both scripts still compile"
-python3 -m py_compile NSE_Stock_Analysis.py SGX_Stock_Analysis.py
+echo "==> Syncing stock lists from stock list.xlsx + notebook from the .py scripts (update_notebook.py)"
+"$PY" update_notebook.py
+
+echo "==> Sanity-checking all scripts still compile"
+"$PY" -m py_compile NSE_Stock_Analysis.py SGX_Stock_Analysis.py sync_stock_lists.py update_notebook.py
 
 echo "==> Staging changes"
 git add -A

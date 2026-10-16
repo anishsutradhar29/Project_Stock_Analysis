@@ -107,26 +107,35 @@ FALLBACK_NIFTY_50 = [
     ("BEL", "Bharat Electronics Ltd", "Capital Goods"),
 ]
 
-# Personal stock additions: company name -> (Code, Display Name). Guaranteed inclusion
-# in the final output (Inclusion_Reason "Personal"), same idea as the NIFTY 50 guarantee
-# below. Hardcoded directly here rather than read from stock list.xlsx, same pattern as
-# SGX's DEFAULT_SGX_INDEX_STOCKS - no file I/O, so these are always present regardless of
-# machine or Colab session, with no dependency on Google Drive.
-NSE_PERSONAL_STOCK_MAPPINGS = {
-    "ACC LTD": ("ACC", "ACC Ltd"),
-    "AMBUJA CEMENTS LTD": ("AMBUJACEM", "Ambuja Cements Ltd"),
-    "ASHOK LEYLAND LTD": ("ASHOKLEY", "Ashok Leyland Ltd"),
-    "INDIAN HOTELS CO LTD": ("INDHOTEL", "Indian Hotels Co Ltd"),
-    "ITC HOTELS LIMITED": ("ITCHOTELS", "ITC Hotels Ltd"),
-    "KWALITY WALLS (INDIA) LIMITED": ("KWIL", "Kwality Wall's (India) Ltd"),
-    "MARICO LTD (MARICO INDUSTRIES LTD)": ("MARICO", "Marico Ltd"),
-    "SIEMENS ENERGY INDIA LIMITED": ("ENRIN", "Siemens Energy India Ltd"),
-}
+# Personal stock additions as (Inclusion reason, Company, Ticker) rows. Guaranteed
+# inclusion in the final output (Inclusion_Reason "Personal"), same idea as the NIFTY 50
+# guarantee below. The block between the markers is GENERATED from the 'NSE' worksheet of
+# 'stock list.xlsx' by sync_stock_lists.py (run automatically by update_notebook.py) -
+# hardcoded rather than read from the file at runtime, so the script (and the Colab
+# notebook built from it) never needs the file. To add/remove a personal stock: edit the
+# spreadsheet, then re-run the sync - don't edit by hand.
+# >>> BEGIN GENERATED STOCK LIST (sync_stock_lists.py) - edit stock list.xlsx, not this block
+NSE_PERSONAL_STOCK_ROWS = [
+    ("Personal", "ACC LTD", "ACC.NS"),
+    ("Personal", "AMBUJA CEMENTS LTD", "AMBUJACEM.NS"),
+    ("Personal", "ASHOK LEYLAND LTD", "ASHOKLEY.NS"),
+    ("Personal", "INDIAN HOTELS CO LTD", "INDHOTEL.NS"),
+    ("Personal", "ITC HOTELS LIMITED", "ITCHOTELS.NS"),
+    ("Personal", "KWALITY WALLS (INDIA) LIMITED", "KWIL.NS"),
+    ("Personal", "MARICO LTD (MARICO INDUSTRIES LTD)", "MARICO.NS"),
+    ("Personal", "SIEMENS ENERGY INDIA LIMITED", "ENRIN.NS"),
+    ("Personal", "Dr. Lal PathLabs Limited", "LALPATHLAB.NS"),
+    ("Personal", "Tata Elxsi Limited", "TATAELXSI.NS"),
+    ("Personal", "Grauer & Weil (India) Limited", "GRAUWEIL.NS"),
+    ("Personal", "MAS Financial Services Limited", "MASFIN.NS"),
+    ("Personal", "Waaree Energies Limited", "WAAREEENER.NS"),
+]
+# <<< END GENERATED STOCK LIST
 
-# Pre-compiled personal stock list, derived directly from the mapping above.
+# Pre-compiled personal stock list, derived directly from the rows above.
 PERSONAL_NSE_STOCKS = [
-    {"code": code, "symbol": f"{code}.NS", "name": display_name}
-    for code, display_name in NSE_PERSONAL_STOCK_MAPPINGS.values()
+    {"code": ticker.split(".")[0], "symbol": ticker, "name": company}
+    for _, company, ticker in NSE_PERSONAL_STOCK_ROWS
 ]
 
 
@@ -172,6 +181,23 @@ def format_abbreviated(value: Optional[float]) -> str:
         return f"{val / 1_000:.2f}K"
     else:
         return f"{val:.2f}"
+
+
+def market_cap_number_format(currency: str) -> str:
+    """
+    Excel custom number format that *displays* a raw market cap like format_currency does
+    ("SGD 1.23B") while the cell keeps the real number, so it sorts/filters numerically.
+    Each trailing comma scales the shown value down by 1,000 (",,," = billions).
+    """
+    p = f'"{currency} "' if currency else ""
+    return f'[>=1000000000000]{p}0.00,,,,"T";[>=1000000000]{p}0.00,,,"B";{p}0.00,,"M"'
+
+
+def parse_percent_text(value: Any) -> Optional[float]:
+    """'96.73%' -> 96.73 (None for 'N/A'/blank) - for writing percent columns as numbers."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    return safe_float(str(value).strip().rstrip("%"))
 
 
 def safe_float(val: Any) -> Optional[float]:
@@ -621,7 +647,10 @@ def extract_top80_with_nifty50(
             combined_df = pd.concat([combined_df, missing_personal_df], ignore_index=True)
 
     # Drop internal columns
-    combined_df = combined_df.drop(columns=["Is_NIFTY50", "_MarketCapRaw"], errors="ignore")
+    # Keep the numeric market cap (as _MarketCapValue) for the Excel Summary sheet,
+    # which writes it as a real number; drop the other internal columns.
+    combined_df = combined_df.rename(columns={"_MarketCapRaw": "_MarketCapValue"})
+    combined_df = combined_df.drop(columns=["Is_NIFTY50"], errors="ignore")
 
     ordered_cols = [
         "NSE_Rank", "Symbol", "Code", "Name",
@@ -629,6 +658,7 @@ def extract_top80_with_nifty50(
         "52WHigh", "52WLow", "52WRange", "Current_Proximity_to_52W_High",
         "Trailing_PE",
         "Sector", "Industry", "Currency", "DividendYield",
+        "_MarketCapValue",
     ]
     existing_cols = [c for c in ordered_cols if c in combined_df.columns]
     combined_df = combined_df[existing_cols]
@@ -934,6 +964,22 @@ def fetch_long_price_history(symbol: str, range_str: str = "5y", max_retries: in
     return pd.DataFrame()
 
 
+def fetch_fx_history(from_ccy: str, to_ccy: str, range_str: str = "5y") -> pd.DataFrame:
+    """
+    Fetch multi-year daily FX history as Date/Close columns, where Close = units of `to_ccy`
+    per 1 unit of `from_ccy` (e.g. SGD -> THB via Yahoo's "SGDTHB=X"). Falls back to the
+    inverse pair (inverting each rate) if Yahoo doesn't list the direct one. Returns an
+    empty DataFrame if neither is available.
+    """
+    hist = fetch_long_price_history(f"{from_ccy}{to_ccy}=X", range_str=range_str)
+    if hist.empty:
+        inverse = fetch_long_price_history(f"{to_ccy}{from_ccy}=X", range_str=range_str)
+        inverse = inverse[inverse["Close"] > 0] if not inverse.empty else inverse
+        if not inverse.empty:
+            hist = inverse.assign(Close=1.0 / inverse["Close"])
+    return hist
+
+
 def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 5) -> pd.DataFrame:
     """
     Build a per-fiscal-year fundamentals table (chronological, oldest year first): Revenue,
@@ -965,7 +1011,17 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
         if income is None or income.empty:
             return empty
 
-        currency = getattr(ticker.fast_info, "currency", None) or "N/A"
+        # Statements (Revenue, EPS, equity, ...) are in the company's *reporting* currency,
+        # while prices and dividends are in its *trading* currency - these differ for many
+        # SGX listings (e.g. Thai Beverage trades in SGD but reports in THB). Valuation ratios
+        # need both sides in the same currency, so prices/dividends are converted below.
+        trading_currency = getattr(ticker.fast_info, "currency", None) or "N/A"
+        try:
+            reporting_currency = (ticker.info or {}).get("financialCurrency") or trading_currency
+        except Exception:
+            logger.warning(f"{symbol}: could not read reporting currency; assuming {trading_currency}")
+            reporting_currency = trading_currency
+        currency = reporting_currency
 
         revenue_row = find_statement_row(income, FUNDAMENTAL_ROW_ALIASES["revenue"])
         gross_row = find_statement_row(income, FUNDAMENTAL_ROW_ALIASES["gross_profit"])
@@ -993,6 +1049,17 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
 
         price_hist = fetch_long_price_history(symbol, range_str="5y")
 
+        # Historical FX (trading -> reporting currency), applied at each fiscal year-end date
+        # rather than today's spot rate. None = same currency, no conversion needed.
+        fx_hist = None
+        if reporting_currency != trading_currency and "N/A" not in (reporting_currency, trading_currency):
+            fx_hist = fetch_fx_history(trading_currency, reporting_currency, range_str="5y")
+            if fx_hist.empty:
+                logger.warning(
+                    f"{symbol}: no {trading_currency}->{reporting_currency} FX history; "
+                    f"leaving P/E, P/S, P/B and dividends blank rather than mixing currencies"
+                )
+
         try:
             dividends = ticker.dividends
             if dividends is not None and not dividends.empty:
@@ -1014,7 +1081,10 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
             equity = safe_float(equity_row.get(period)) if equity_row is not None else None
             debt = safe_float(debt_row.get(period)) if debt_row is not None else None
 
+            fx_rate = 1.0 if fx_hist is None else get_price_on_or_before(fx_hist, fye)
             price = get_price_on_or_before(price_hist, fye)
+            if price is not None:
+                price = price * fx_rate if fx_rate is not None else None
 
             pe = (price / eps) if (price is not None and eps not in (None, 0)) else None
             market_cap_fye = (price * shares) if (price is not None and shares) else None
@@ -1033,8 +1103,8 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
                 window_end = pd.Timestamp(fye)
                 window_start = prev_fye if prev_fye is not None else (window_end - pd.DateOffset(years=1))
                 in_window = dividends[(dividends.index > window_start) & (dividends.index <= window_end)]
-                if not in_window.empty:
-                    dps = float(in_window.sum())
+                if not in_window.empty and fx_rate is not None:
+                    dps = float(in_window.sum()) * fx_rate
             prev_fye = pd.Timestamp(fye)
 
             rows.append({
@@ -1137,15 +1207,32 @@ def save_results(
             # dropping it only from this formatted copy doesn't affect that).
             df_summary_fmt = df_summary_fmt.drop(columns=["SharesOutstanding"], errors="ignore")
 
-            if "Volume" in df_summary_fmt.columns:
-                df_summary_fmt["Volume"] = df_summary_fmt["Volume"].apply(
-                    lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
-                )
-            for col in ["TodaysClose", "52WHigh", "52WLow", "52WRange", "Trailing_PE", "Forward_PE"]:
-                if col in df_summary_fmt.columns:
-                    df_summary_fmt[col] = df_summary_fmt[col].apply(
-                        lambda x: f"{float(x):.2f}" if pd.notnull(x) and safe_float(x) is not None else x
-                    )
+            # Numeric columns are written as real numbers (not pre-formatted text) so the
+            # Summary table's filter/sort dropdowns order them numerically. Their display
+            # (2 decimals, "SGD 1.23B", "96.73%") comes from Excel number formats applied
+            # after writing - see summary_number_formats below.
+            if "_MarketCapValue" in df_summary_fmt.columns:
+                # Swap the display string ("SGD 1.23B") for the underlying number.
+                cap_values = pd.to_numeric(df_summary_fmt["_MarketCapValue"], errors="coerce")
+                df_summary_fmt["MarketCap"] = cap_values.where(cap_values > 0)
+                df_summary_fmt = df_summary_fmt.drop(columns=["_MarketCapValue"])
+            if "Current_Proximity_to_52W_High" in df_summary_fmt.columns:
+                df_summary_fmt["Current_Proximity_to_52W_High"] = df_summary_fmt["Current_Proximity_to_52W_High"].apply(parse_percent_text)
+            summary_number_formats = {
+                "SGX_Rank": "0",
+                "NSE_Rank": "0",
+                "TodaysClose": "#,##0.00",
+                "52WHigh": "#,##0.00",
+                "52WLow": "#,##0.00",
+                "52WRange": "#,##0.00",
+                "Current_Proximity_to_52W_High": '0.00"%"',
+                "Trailing_PE": "#,##0.00",
+                "Forward_PE": "#,##0.00",
+                "DividendYield": '0.00"%"',   # Yahoo reports this in percent points already (4.08 = 4.08%)
+            }
+            for col in list(summary_number_formats) + ["MarketCap"]:
+                if col in df_summary_fmt.columns and (col != "MarketCap" or pd.api.types.is_numeric_dtype(df_summary_fmt[col])):
+                    df_summary_fmt[col] = pd.to_numeric(df_summary_fmt[col], errors="coerce")
 
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
                 # 1. Write formatted Summary Sheet
@@ -1179,6 +1266,25 @@ def save_results(
                     )
                     ws_summary.add_table(summary_table)
                     ws_summary.freeze_panes = "A2"
+
+                # Display formats for the numeric columns (values themselves stay numbers).
+                # Market Cap uses each row's own Currency.
+                summary_cols = list(df_summary_fmt.columns)
+                currency_col = summary_cols.index("Currency") + 1 if "Currency" in summary_cols else None
+                market_cap_numeric = "MarketCap" in summary_cols and pd.api.types.is_numeric_dtype(df_summary_fmt["MarketCap"])
+                for c_idx, col_name in enumerate(summary_cols, start=1):
+                    fmt = summary_number_formats.get(col_name)
+                    if col_name == "MarketCap" and market_cap_numeric:
+                        fmt = "market_cap"
+                    if not fmt:
+                        continue
+                    for r_idx in range(2, len(df_summary_fmt) + 2):
+                        cell = ws_summary.cell(row=r_idx, column=c_idx)
+                        if fmt == "market_cap":
+                            row_ccy = ws_summary.cell(row=r_idx, column=currency_col).value if currency_col else None
+                            cell.number_format = market_cap_number_format(row_ccy or "INR")
+                        else:
+                            cell.number_format = fmt
 
                 # 2. Write formatted 52W Daily History Sheet
                 history_ws = None
@@ -1357,7 +1463,7 @@ def save_results(
 
                     # 4. Hyperlink each company's Name cell on the Summary sheet to its block above
                     if "Name" in df_summary.columns and "Symbol" in df_summary.columns:
-                        name_col_idx = list(df_summary.columns).index("Name") + 1
+                        name_col_idx = list(df_summary_fmt.columns).index("Name") + 1
                         for r_idx, sym in enumerate(df_summary["Symbol"].tolist(), start=2):  # row 1 = header
                             if sym in anchor_rows:
                                 cell = ws_summary.cell(row=r_idx, column=name_col_idx)
@@ -1457,7 +1563,7 @@ def save_results(
                     # 6. Hyperlink Symbol cells on Summary, and company headers on "52W Daily
                     #    History", straight to each company's chart above.
                     if "Symbol" in df_summary.columns:
-                        symbol_col_idx = list(df_summary.columns).index("Symbol") + 1
+                        symbol_col_idx = list(df_summary_fmt.columns).index("Symbol") + 1
                         for r_idx, sym in enumerate(df_summary["Symbol"].tolist(), start=2):
                             if sym in chart_anchor_rows:
                                 cell = ws_summary.cell(row=r_idx, column=symbol_col_idx)
@@ -1474,7 +1580,7 @@ def save_results(
             logger.error(f"Failed to write Excel workbook: {e}")
     elif ext == ".json":
         base, _ = os.path.splitext(output_path)
-        df_summary.to_json(output_path, orient="records", indent=2)
+        df_summary.drop(columns=["_MarketCapValue"], errors="ignore").to_json(output_path, orient="records", indent=2)
         if df_history is not None and not df_history.empty:
             hist_path = f"{base}_history.json"
             df_history.to_json(hist_path, orient="records", indent=2)
@@ -1482,7 +1588,7 @@ def save_results(
         logger.info(f"Summary dataset successfully saved to: {os.path.abspath(output_path)}")
     else:
         base, _ = os.path.splitext(output_path)
-        df_summary.to_csv(output_path, index=False)
+        df_summary.drop(columns=["_MarketCapValue"], errors="ignore").to_csv(output_path, index=False)
         if df_history is not None and not df_history.empty:
             hist_path = f"{base}_history.csv"
             df_history.to_csv(hist_path, index=False)

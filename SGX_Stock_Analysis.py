@@ -8,7 +8,8 @@ trailing P/E, sector, industry, and custom 52-week range positioning for:
    - Straits Times Index (STI) [30 constituents]
    - Small Cap Index (S Cap) [40 constituents]
    - Large & Mid Cap Index (L & M Cap) [19 constituents]
-   Directly extracted and mapped from 'stock list.xlsx' (its 'SGX' worksheet).
+   Hardcoded in SGX_INDEX_STOCK_ROWS, generated from 'stock list.xlsx' ('SGX' worksheet)
+   by sync_stock_lists.py - the file itself isn't read at runtime.
 2. Market Cap Scanning Mode (--scan-market-cap / --mode market-cap):
    - Full SGX universe extraction, Top N ranking, and STI catch-up inclusion.
 
@@ -92,242 +93,155 @@ FALLBACK_STI_30 = [
     ("V03", "Venture Corporation Ltd", "Technology"),
 ]
 
-# Verified comprehensive mappings for all constituents in 'stock list.xlsx' ('SGX' worksheet)
-# Mapping: Company Name in Excel -> (Code, Symbol, Security Type, Index, Is_STI30)
-SGX_INDEX_STOCK_MAPPINGS = {
-    # --- 30 Straits Times Index (STI) Constituents ---
-    "Mapletree PanAsia Co": ("N2IU", "N2IU.SI", "reits", "STI", True),
-    "CapLand Ascendas REI": ("A17U", "A17U.SI", "reits", "STI", True),
-    "Mapletree Log Tr": ("M44U", "M44U.SI", "reits", "STI", True),
-    "JMH USD": ("J36", "J36.SI", "stocks", "STI", True),
-    "Frasers Cpt Tr": ("J69U", "J69U.SI", "reits", "STI", True),
-    "Mapletree Ind Tr": ("ME8U", "ME8U.SI", "reits", "STI", True),
-    "Keppel DC Reit": ("AJBU", "AJBU.SI", "reits", "STI", True),
-    "Genting Sing": ("G13", "G13.SI", "stocks", "STI", True),
-    "Frasers L&C Tr": ("BUOU", "BUOU.SI", "reits", "STI", True),
-    "CapitaLandInvest": ("9CI", "9CI.SI", "stocks", "STI", True),
-    "DFIRG USD": ("D01", "D01.SI", "stocks", "STI", True),
-    "SIA": ("C6L", "C6L.SI", "stocks", "STI", True),
-    "CapLand IntCom T": ("C38U", "C38U.SI", "reits", "STI", True),
-    "Singtel": ("Z74", "Z74.SI", "stocks", "STI", True),
-    "SATS": ("S58", "S58.SI", "stocks", "STI", True),
-    "Seatrium Ltd": ("5E2", "5E2.SI", "stocks", "STI", True),
-    "UOL": ("U14", "U14.SI", "stocks", "STI", True),
-    "ThaiBev": ("Y92", "Y92.SI", "stocks", "STI", True),
-    "Sembcorp Ind": ("U96", "U96.SI", "stocks", "STI", True),
-    "CityDev": ("C09", "C09.SI", "stocks", "STI", True),
-    "Venture Corp": ("V03", "V03.SI", "stocks", "STI", True),
-    "Keppel": ("BN4", "BN4.SI", "stocks", "STI", True),
-    "ST Engineering": ("S63", "S63.SI", "stocks", "STI", True),
-    "UOB": ("U11", "U11.SI", "stocks", "STI", True),
-    "HongkongLand USD": ("H78", "H78.SI", "stocks", "STI", True),
-    "Wilmar Intl": ("F34", "F34.SI", "stocks", "STI", True),
-    "SGX": ("S68", "S68.SI", "stocks", "STI", True),
-    "OCBC Bank": ("O39", "O39.SI", "stocks", "STI", True),
-    "DBS Grp": ("D05", "D05.SI", "stocks", "STI", True),
-    "YZJ Shipbldg SGD": ("BS6", "BS6.SI", "stocks", "STI", True),
+# SGX default-mode stock universe: every STI / S Cap / L & M Cap constituent plus any
+# "Personal" additions, as (Index, Company, Ticker) rows. The block between the markers
+# below is GENERATED from the 'SGX' worksheet of 'stock list.xlsx' by sync_stock_lists.py
+# (run automatically by update_notebook.py) - hardcoded rather than read from the file at
+# runtime, so the script (and the Colab notebook built from it) never needs the file.
+# To add/remove a stock: edit the spreadsheet, then re-run the sync - don't edit by hand.
+# >>> BEGIN GENERATED STOCK LIST (sync_stock_lists.py) - edit stock list.xlsx, not this block
+SGX_INDEX_STOCK_ROWS = [
+    ("STI", "Mapletree PanAsia Co", "N2IU.SI"),
+    ("STI", "CapLand Ascendas REI", "A17U.SI"),
+    ("STI", "Mapletree Log Tr", "M44U.SI"),
+    ("STI", "JMH USD", "J36.SI"),
+    ("STI", "Frasers Cpt Tr", "J69U.SI"),
+    ("STI", "Mapletree Ind Tr", "ME8U.SI"),
+    ("STI", "Keppel DC Reit", "AJBU.SI"),
+    ("STI", "Genting Sing", "G13.SI"),
+    ("STI", "Frasers L&C Tr", "BUOU.SI"),
+    ("STI", "CapitaLandInvest", "9CI.SI"),
+    ("STI", "DFIRG USD", "D01.SI"),
+    ("STI", "SIA", "C6L.SI"),
+    ("STI", "CapLand IntCom T", "C38U.SI"),
+    ("STI", "Singtel", "Z74.SI"),
+    ("STI", "SATS", "S58.SI"),
+    ("STI", "Seatrium Ltd", "5E2.SI"),
+    ("STI", "UOL", "U14.SI"),
+    ("STI", "ThaiBev", "Y92.SI"),
+    ("STI", "Sembcorp Ind", "U96.SI"),
+    ("STI", "CityDev", "C09.SI"),
+    ("STI", "Venture Corp", "V03.SI"),
+    ("STI", "Keppel", "BN4.SI"),
+    ("STI", "ST Engineering", "S63.SI"),
+    ("STI", "UOB", "U11.SI"),
+    ("STI", "HongkongLand USD", "H78.SI"),
+    ("STI", "Wilmar Intl", "F34.SI"),
+    ("STI", "SGX", "S68.SI"),
+    ("STI", "OCBC Bank", "O39.SI"),
+    ("STI", "DBS Grp", "D05.SI"),
+    ("STI", "YZJ Shipbldg SGD", "BS6.SI"),
+    ("S Cap", "First Reit", "AW9U.SI"),
+    ("S Cap", "YZJ Fin Hldg", "YF8.SI"),
+    ("S Cap", "Aztech Gbl", "8AZ.SI"),
+    ("S Cap", "Prime US REIT USD", "OXMU.SI"),
+    ("S Cap", "Yanlord Land", "Z25.SI"),
+    ("S Cap", "Delfi", "P34.SI"),
+    ("S Cap", "CapLand India T", "CY6U.SI"),
+    ("S Cap", "CapLand China T", "AU8U.SI"),
+    ("S Cap", "UtdHampshReitUSD", "ODBU.SI"),
+    ("S Cap", "Samudera Shipping", "S56.SI"),
+    ("S Cap", "Manulife Reit USD", "BTOU.SI"),
+    ("S Cap", "Far East HTrust", "Q5T.SI"),
+    ("S Cap", "StarhillGbl Reit", "P40U.SI"),
+    ("S Cap", "Daiwa Hse Log Tr", "DHLU.SI"),
+    ("S Cap", "Wee Hur", "E3B.SI"),
+    ("S Cap", "KORE Reit USD", "CMOU.SI"),
+    ("S Cap", "Cosco Shp", "F83.SI"),
+    ("S Cap", "Straits Trading", "S20.SI"),
+    ("S Cap", "PropNex", "OYY.SI"),
+    ("S Cap", "SingPost", "S08.SI"),
+    ("S Cap", "China Aviation", "G92.SI"),
+    ("S Cap", "Lendlease Reit", "JYEU.SI"),
+    ("S Cap", "Yoma Strategic", "Z59.SI"),
+    ("S Cap", "DigiCore Reit USD", "DCRU.SI"),
+    ("S Cap", "AIMS APAC Reit", "O5RU.SI"),
+    ("S Cap", "Nanofilm", "MZH.SI"),
+    ("S Cap", "Stoneweg EU Trust EU", "SET.SI"),
+    ("S Cap", "BRC Asia", "BEC.SI"),
+    ("S Cap", "Food Empire", "F03.SI"),
+    ("S Cap", "Riverstone", "AP4.SI"),
+    ("S Cap", "Frencken", "E28.SI"),
+    ("S Cap", "Hong Fok", "H30.SI"),
+    ("S Cap", "Valuetronics", "BN2.SI"),
+    ("S Cap", "Centurion", "OU8.SI"),
+    ("S Cap", "Geo Energy Res", "RE4.SI"),
+    ("S Cap", "Sasseur Reit", "CRPU.SI"),
+    ("S Cap", "UMS", "558.SI"),
+    ("S Cap", "AEM SGD", "AWX.SI"),
+    ("S Cap", "Civmec", "P9D.SI"),
+    ("S Cap", "Bumitama Agri", "P8Z.SI"),
+    ("L & M Cap", "CapLand Ascott T", "HMN.SI"),
+    ("L & M Cap", "RaffIes Medical", "BSL.SI"),
+    ("L & M Cap", "ESR REIT", "9A4U.SI"),
+    ("L & M Cap", "SIA Engineering", "S59.SI"),
+    ("L & M Cap", "ComfortDelGro", "C52.SI"),
+    ("L & M Cap", "CDL HTrust", "J85.SI"),
+    ("L & M Cap", "Keppel Reit", "K71U.SI"),
+    ("L & M Cap", "IFAST", "AIY.SI"),
+    ("L & M Cap", "ParkwayLife Reit", "C2PU.SI"),
+    ("L & M Cap", "OUEREIT", "TS0U.SI"),
+    ("L & M Cap", "Olam Group", "VC2.SI"),
+    ("L & M Cap", "NetLink NBN Tr", "CJLU.SI"),
+    ("L & M Cap", "HPH Trust USD", "NS8U.SI"),
+    ("L & M Cap", "Suntec Reit", "T82U.SI"),
+    ("L & M Cap", "StarHub", "CC3.SI"),
+    ("L & M Cap", "Kep Infra Tr", "A7RU.SI"),
+    ("L & M Cap", "Golden Agri-Res", "E5H.SI"),
+    ("L & M Cap", "Sheng Siong", "OV8.SI"),
+    ("L & M Cap", "First Resources", "EB5.SI"),
+    ("Personal", "Micro Mechanics", "5DD.SI"),
+    ("Personal", "Jardine C&C", "C07.SI"),
+    ("Personal", "Rex International", "5WH.SI"),
+]
+# <<< END GENERATED STOCK LIST
 
-    # --- 40 Small Cap (S Cap) Constituents ---
-    "First Reit": ("AW9U", "AW9U.SI", "reits", "S Cap", False),
-    "YZJ Fin Hldg": ("YF8", "YF8.SI", "stocks", "S Cap", False),
-    "Aztech Gbl": ("8AZ", "8AZ.SI", "stocks", "S Cap", False),
-    "Prime US REIT USD": ("OXMU", "OXMU.SI", "reits", "S Cap", False),
-    "Yanlord Land": ("Z25", "Z25.SI", "stocks", "S Cap", False),
-    "Delfi": ("P34", "P34.SI", "stocks", "S Cap", False),
-    "CapLand India T": ("CY6U", "CY6U.SI", "businesstrusts", "S Cap", False),
-    "CapLand China T": ("AU8U", "AU8U.SI", "reits", "S Cap", False),
-    "UtdHampshReitUSD": ("ODBU", "ODBU.SI", "reits", "S Cap", False),
-    "Samudera Shipping": ("S56", "S56.SI", "stocks", "S Cap", False),
-    "Manulife Reit USD": ("BTOU", "BTOU.SI", "reits", "S Cap", False),
-    "Far East HTrust": ("Q5T", "Q5T.SI", "reits", "S Cap", False),
-    "StarhillGbl Reit": ("P40U", "P40U.SI", "reits", "S Cap", False),
-    "Daiwa Hse Log Tr": ("DHLU", "DHLU.SI", "reits", "S Cap", False),
-    "Wee Hur": ("E3B", "E3B.SI", "stocks", "S Cap", False),
-    "KORE Reit USD": ("CMOU", "CMOU.SI", "reits", "S Cap", False),
-    "Cosco Shp": ("F83", "F83.SI", "stocks", "S Cap", False),
-    "Straits Trading": ("S20", "S20.SI", "stocks", "S Cap", False),
-    "PropNex": ("OYY", "OYY.SI", "stocks", "S Cap", False),
-    "SingPost": ("S08", "S08.SI", "stocks", "S Cap", False),
-    "China Aviation": ("G92", "G92.SI", "stocks", "S Cap", False),
-    "Lendlease Reit": ("JYEU", "JYEU.SI", "reits", "S Cap", False),
-    "Yoma Strategic": ("Z59", "Z59.SI", "stocks", "S Cap", False),
-    "DigiCore Reit USD": ("DCRU", "DCRU.SI", "reits", "S Cap", False),
-    "AIMS APAC Reit": ("O5RU", "O5RU.SI", "reits", "S Cap", False),
-    "Nanofilm": ("MZH", "MZH.SI", "stocks", "S Cap", False),
-    "Stoneweg EU Trust EU": ("SET", "SET.SI", "reits", "S Cap", False),
-    "BRC Asia": ("BEC", "BEC.SI", "stocks", "S Cap", False),
-    "Food Empire": ("F03", "F03.SI", "stocks", "S Cap", False),
-    "Riverstone": ("AP4", "AP4.SI", "stocks", "S Cap", False),
-    "Frencken": ("E28", "E28.SI", "stocks", "S Cap", False),
-    "Hong Fok": ("H30", "H30.SI", "stocks", "S Cap", False),
-    "Valuetronics": ("BN2", "BN2.SI", "stocks", "S Cap", False),
-    "Centurion": ("OU8", "OU8.SI", "stocks", "S Cap", False),
-    "Geo Energy Res": ("RE4", "RE4.SI", "stocks", "S Cap", False),
-    "Sasseur Reit": ("CRPU", "CRPU.SI", "reits", "S Cap", False),
-    "UMS": ("558", "558.SI", "stocks", "S Cap", False),
-    "AEM SGD": ("AWX", "AWX.SI", "stocks", "S Cap", False),
-    "Civmec": ("P9D", "P9D.SI", "stocks", "S Cap", False),
-    "Bumitama Agri": ("P8Z", "P8Z.SI", "stocks", "S Cap", False),
-
-    # --- 19 Large & Mid Cap (L & M Cap) Constituents ---
-    "CapLand Ascott T": ("HMN", "HMN.SI", "reits", "L & M Cap", False),
-    "RaffIes Medical": ("BSL", "BSL.SI", "stocks", "L & M Cap", False),
-    "ESR REIT": ("9A4U", "9A4U.SI", "reits", "L & M Cap", False),
-    "SIA Engineering": ("S59", "S59.SI", "stocks", "L & M Cap", False),
-    "ComfortDelGro": ("C52", "C52.SI", "stocks", "L & M Cap", False),
-    "CDL HTrust": ("J85", "J85.SI", "reits", "L & M Cap", False),
-    "Keppel Reit": ("K71U", "K71U.SI", "reits", "L & M Cap", False),
-    "IFAST": ("AIY", "AIY.SI", "stocks", "L & M Cap", False),
-    "ParkwayLife Reit": ("C2PU", "C2PU.SI", "reits", "L & M Cap", False),
-    "OUEREIT": ("TS0U", "TS0U.SI", "reits", "L & M Cap", False),
-    "Olam Group": ("VC2", "VC2.SI", "stocks", "L & M Cap", False),
-    "NetLink NBN Tr": ("CJLU", "CJLU.SI", "businesstrusts", "L & M Cap", False),
-    "HPH Trust USD": ("NS8U", "NS8U.SI", "businesstrusts", "L & M Cap", False),
-    "Suntec Reit": ("T82U", "T82U.SI", "reits", "L & M Cap", False),
-    "StarHub": ("CC3", "CC3.SI", "stocks", "L & M Cap", False),
-    "Kep Infra Tr": ("A7RU", "A7RU.SI", "businesstrusts", "L & M Cap", False),
-    "Golden Agri-Res": ("E5H", "E5H.SI", "stocks", "L & M Cap", False),
-    "Sheng Siong": ("OV8", "OV8.SI", "stocks", "L & M Cap", False),
-    "First Resources": ("EB5", "EB5.SI", "stocks", "L & M Cap", False),
-
-    # --- 3 Personal Additions ---
-    "Micro Mechanics": ("5DD", "5DD.SI", "stocks", "Personal", False),
-    "Jardine C&C": ("C07", "C07.SI", "stocks", "Personal", False),
-    "Rex International": ("5WH", "5WH.SI", "stocks", "Personal", False),
-}
-
-# Pre-compiled fallback list of all 89 index stocks
-DEFAULT_SGX_INDEX_STOCKS = [
+# Pre-compiled default-mode stock list, derived from the rows above. "type" is left as
+# None here and worked out per stock after its data is fetched (see classify_sgx_security).
+SGX_INDEX_STOCKS = [
     {
-        "code": code,
-        "symbol": sym,
-        "type": stype,
-        "name": comp_name,
-        "index": idx,
-        "is_sti30": is_sti,
+        "code": ticker.split(".")[0],
+        "symbol": ticker,
+        "type": None,
+        "name": company,
+        "index": index_name,
+        "is_sti30": index_name == "STI",
     }
-    for comp_name, (code, sym, stype, idx, is_sti) in SGX_INDEX_STOCK_MAPPINGS.items()
+    for index_name, company, ticker in SGX_INDEX_STOCK_ROWS
 ]
 
+# SGX business trusts in the default-mode list. Unlike REITs (identifiable from Yahoo's
+# industry, which always starts with "REIT"), business trusts report ordinary industries
+# (e.g. "Telecom Services", "Marine Shipping"), so they're listed explicitly. When adding a
+# new business trust to stock list.xlsx, add its ticker here too - classify_sgx_security
+# logs a warning for any non-REIT whose name looks like a trust but isn't in this set.
+SGX_BUSINESS_TRUSTS = {
+    "CY6U.SI",  # CapitaLand India Trust
+    "CJLU.SI",  # NetLink NBN Trust
+    "NS8U.SI",  # Hutchison Port Holdings Trust
+    "A7RU.SI",  # Keppel Infrastructure Trust
+}
 
-def load_sgx_index_stock_list(excel_path: Optional[str] = None) -> List[Dict[str, Any]]:
+
+def classify_sgx_security(symbol: str, industry: Optional[str], name: Optional[str]) -> str:
     """
-    Extract the list of stocks contained within the shared 'stock list.xlsx' workbook's
-    'SGX' worksheet (Index, Company, and an optional Ticker column). Searches candidate
-    paths or uses the embedded index-stock list if the Excel file is unavailable.
-
-    A non-blank Ticker cell (e.g. '5DD.SI') is used directly - no name lookup needed.
-    A blank one falls back to matching the Company name against SGX_INDEX_STOCK_MAPPINGS
-    (exact, then fuzzy), and failing that, a crude best-guess from the name itself.
-
-    Returns a list of dicts:
-    [{'code': '...', 'symbol': '...SI', 'type': '...', 'name': '...', 'index': '...', 'is_sti30': bool}, ...]
+    Work out a default-mode stock's security type ('reits', 'businesstrusts', or 'stocks')
+    from its fetched Yahoo industry plus the SGX_BUSINESS_TRUSTS list. Returns 'N/A' if the
+    industry couldn't be fetched and the stock isn't a known business trust.
     """
-    candidate_paths = []
-    if excel_path:
-        candidate_paths.append(excel_path)
-    candidate_paths.extend([
-        "stock list.xlsx",
-        os.path.join(os.getcwd(), "stock list.xlsx"),
-    ])
-    try:
-        # Relative to this script's own location, not a hardcoded machine/OS path -
-        # keeps this working after the project is copied elsewhere. __file__ is only
-        # defined when running as a real .py file - in a notebook (Jupyter/Colab, where
-        # this same code also runs via update_notebook.py's sync) there is no backing
-        # file, so this candidate is simply skipped and the cwd/relative ones above cover it.
-        candidate_paths.append(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock list.xlsx")
+    if symbol in SGX_BUSINESS_TRUSTS:
+        return "businesstrusts"
+    if not industry or industry == "N/A":
+        return "N/A"
+    if industry.startswith("REIT"):
+        return "reits"
+    name_words = (name or "").lower().replace(".", " ").split()
+    if "trust" in name_words or "tr" in name_words:
+        logger.warning(
+            f"{symbol} ({name}) looks like a trust but isn't a REIT or in SGX_BUSINESS_TRUSTS - "
+            f"classified as 'stocks'. If it's a business trust, add it to SGX_BUSINESS_TRUSTS."
         )
-    except NameError:
-        pass
-
-    resolved_path = None
-    for p in candidate_paths:
-        if p and os.path.exists(p):
-            resolved_path = p
-            break
-
-    if not resolved_path:
-        logger.warning("'stock list.xlsx' not found. Using embedded index stock list.")
-        return list(DEFAULT_SGX_INDEX_STOCKS)
-
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(resolved_path)
-        # "SGX" is the current worksheet name; "Sheet2" is kept as a fallback for
-        # older copies of this file that predate the rename, and wb.active as a
-        # last resort if neither name is present.
-        if "SGX" in wb.sheetnames:
-            sheet = wb["SGX"]
-        elif "Sheet2" in wb.sheetnames:
-            sheet = wb["Sheet2"]
-        else:
-            sheet = wb.active
-        stocks = []
-        seen_symbols = set()
-
-        for row in sheet.iter_rows(values_only=True):
-            if not any(row):
-                continue
-            vals = [str(c).strip() for c in row if c is not None]
-            if "Index" in vals and "Company" in vals:
-                continue
-
-            non_none = [c for c in row if c is not None]
-            if len(non_none) >= 2:
-                idx = str(non_none[0]).strip()
-                comp = str(non_none[1]).strip()
-                # Optional 3rd column: a real ticker (e.g. '5DD.SI') straight from the
-                # sheet - present since the "Ticker" column was added. Present and
-                # non-blank takes priority over name-matching below; absent/blank falls
-                # back to it unchanged (so older rows/files without this column still work).
-                ticker = str(non_none[2]).strip() if len(non_none) >= 3 else None
-
-                if ticker:
-                    sym = ticker
-                    code = sym.split(".")[0]
-                    dict_entry = SGX_INDEX_STOCK_MAPPINGS.get(comp)
-                    stype = dict_entry[2] if dict_entry else "stocks"
-                    is_sti = idx == "STI"
-                elif comp in SGX_INDEX_STOCK_MAPPINGS:
-                    code, sym, stype, _, is_sti = SGX_INDEX_STOCK_MAPPINGS[comp]
-                else:
-                    # Fuzzy match fallback
-                    clean_comp = comp.lower().replace(" ", "").replace("&", "")
-                    matched = None
-                    for k, v in SGX_INDEX_STOCK_MAPPINGS.items():
-                        clean_k = k.lower().replace(" ", "").replace("&", "")
-                        if clean_comp in clean_k or clean_k in clean_comp:
-                            matched = v
-                            break
-                    if matched:
-                        code, sym, stype, _, is_sti = matched
-                    else:
-                        code = comp[:4].upper()
-                        sym = f"{code}.SI"
-                        stype = "stocks"
-                        is_sti = idx == "STI"
-
-                if sym not in seen_symbols:
-                    stocks.append({
-                        "code": code,
-                        "symbol": sym,
-                        "type": stype,
-                        "name": comp,
-                        "index": idx,
-                        "is_sti30": is_sti,
-                    })
-                    seen_symbols.add(sym)
-
-        if stocks:
-            logger.info(f"Loaded {len(stocks)} index stocks from '{resolved_path}'.")
-            return stocks
-
-    except Exception as e:
-        logger.warning(f"Error reading Excel file '{resolved_path}': {e}. Using embedded fallback.")
-
-    return list(DEFAULT_SGX_INDEX_STOCKS)
+    return "stocks"
 
 
 def clean_text(text: str) -> str:
@@ -372,6 +286,23 @@ def format_abbreviated(value: Optional[float]) -> str:
         return f"{val / 1_000:.2f}K"
     else:
         return f"{val:.2f}"
+
+
+def market_cap_number_format(currency: str) -> str:
+    """
+    Excel custom number format that *displays* a raw market cap like format_currency does
+    ("SGD 1.23B") while the cell keeps the real number, so it sorts/filters numerically.
+    Each trailing comma scales the shown value down by 1,000 (",,," = billions).
+    """
+    p = f'"{currency} "' if currency else ""
+    return f'[>=1000000000000]{p}0.00,,,,"T";[>=1000000000]{p}0.00,,,"B";{p}0.00,,"M"'
+
+
+def parse_percent_text(value: Any) -> Optional[float]:
+    """'96.73%' -> 96.73 (None for 'N/A'/blank) - for writing percent columns as numbers."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    return safe_float(str(value).strip().rstrip("%"))
 
 
 def safe_float(val: Any) -> Optional[float]:
@@ -734,23 +665,22 @@ def fetch_latest_ticker_data(
 
 
 def extract_index_stocks(
-    excel_path: Optional[str] = None,
     max_workers: int = 10
 ) -> pd.DataFrame:
     """
     DEFAULT MODE:
-    1. Extracts the list of stocks contained within 'stock list.xlsx''s 'SGX' worksheet
-       (STI, S Cap, L & M Cap, plus any Personal additions).
+    1. Uses the hardcoded SGX_INDEX_STOCKS list (STI, S Cap, L & M Cap, plus any Personal
+       additions - generated from 'stock list.xlsx' by sync_stock_lists.py).
     2. Converts all market caps to SGD using Yahoo Finance native forex tickers (e.g. USDSGD=X).
     3. Fetches latest metrics (52W High, 52W Low, 52W Range, Proximity to 52W High,
        Trailing P/E, Sector, Industry, DividendYield).
     4. Ranks all index constituents by SGD-normalised Market Cap for accurate cross-currency ranking.
     5. Sets Inclusion_Reason to reflect the index the stock is from ('STI', 'S Cap', or 'L & M Cap').
     """
-    # 1. Load the 89 index stocks from Excel
-    securities = load_sgx_index_stock_list(excel_path=excel_path)
+    # 1. Load the hardcoded index stock list (plus Personal additions)
+    securities = list(SGX_INDEX_STOCKS)
     total_count = len(securities)
-    logger.info(f"Loaded {total_count} stocks across STI, S Cap, and L & M Cap indices.")
+    logger.info(f"Loaded {total_count} stocks across STI, S Cap, L & M Cap, and Personal additions.")
 
     # 2. Fetch live SGD FX rates via Yahoo Finance native forex tickers
     fx_rates = get_sgd_fx_rates()
@@ -793,6 +723,12 @@ def extract_index_stocks(
                         break
             time.sleep(0.2)
 
+    # Security type (reits / businesstrusts / stocks) from each stock's fetched industry -
+    # done here, after the retry pass, so it uses the final fetched data for every row.
+    for record in results:
+        if record.get("Type") is None:
+            record["Type"] = classify_sgx_security(record["Symbol"], record.get("Industry"), record.get("Name"))
+
     full_df = pd.DataFrame(results)
 
     # 4. Sort descending by SGD-normalised market cap across all index constituents
@@ -803,7 +739,10 @@ def extract_index_stocks(
     full_df["Inclusion_Reason"] = full_df["Index"].fillna("Index")
 
     # Drop internal/intermediate columns
-    full_df = full_df.drop(columns=["Is_STI30", "Index", "_MarketCapRaw", "_MarketCapSGD"], errors="ignore")
+    # Keep the numeric SGD market cap (as _MarketCapValue) for the Excel Summary sheet,
+    # which writes it as a real number; drop the other internal columns.
+    full_df = full_df.rename(columns={"_MarketCapSGD": "_MarketCapValue"})
+    full_df = full_df.drop(columns=["Is_STI30", "Index", "_MarketCapRaw"], errors="ignore")
 
     # Final export column order
     ordered_cols = [
@@ -812,6 +751,7 @@ def extract_index_stocks(
         "52WHigh", "52WLow", "52WRange", "Current_Proximity_to_52W_High",
         "Trailing_PE",
         "Sector", "Industry", "Currency", "DividendYield",
+        "_MarketCapValue",
     ]
     existing_cols = [c for c in ordered_cols if c in full_df.columns]
     combined_df = full_df[existing_cols]
@@ -916,7 +856,10 @@ def extract_top50_with_sti30(
         combined_df = top50_df
 
     # Drop internal/redundant columns
-    combined_df = combined_df.drop(columns=["Is_STI30", "Index", "_MarketCapRaw", "_MarketCapSGD"], errors="ignore")
+    # Keep the numeric SGD market cap (as _MarketCapValue) for the Excel Summary sheet,
+    # which writes it as a real number; drop the other internal columns.
+    combined_df = combined_df.rename(columns={"_MarketCapSGD": "_MarketCapValue"})
+    combined_df = combined_df.drop(columns=["Is_STI30", "Index", "_MarketCapRaw"], errors="ignore")
 
     # Final export column order
     ordered_cols = [
@@ -925,6 +868,7 @@ def extract_top50_with_sti30(
         "52WHigh", "52WLow", "52WRange", "Current_Proximity_to_52W_High",
         "Trailing_PE",
         "Sector", "Industry", "Currency", "DividendYield",
+        "_MarketCapValue",
     ]
     existing_cols = [c for c in ordered_cols if c in combined_df.columns]
     combined_df = combined_df[existing_cols]
@@ -1251,6 +1195,22 @@ def fetch_long_price_history(symbol: str, range_str: str = "5y", max_retries: in
     return pd.DataFrame()
 
 
+def fetch_fx_history(from_ccy: str, to_ccy: str, range_str: str = "5y") -> pd.DataFrame:
+    """
+    Fetch multi-year daily FX history as Date/Close columns, where Close = units of `to_ccy`
+    per 1 unit of `from_ccy` (e.g. SGD -> THB via Yahoo's "SGDTHB=X"). Falls back to the
+    inverse pair (inverting each rate) if Yahoo doesn't list the direct one. Returns an
+    empty DataFrame if neither is available.
+    """
+    hist = fetch_long_price_history(f"{from_ccy}{to_ccy}=X", range_str=range_str)
+    if hist.empty:
+        inverse = fetch_long_price_history(f"{to_ccy}{from_ccy}=X", range_str=range_str)
+        inverse = inverse[inverse["Close"] > 0] if not inverse.empty else inverse
+        if not inverse.empty:
+            hist = inverse.assign(Close=1.0 / inverse["Close"])
+    return hist
+
+
 def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 5) -> pd.DataFrame:
     """
     Build a per-fiscal-year fundamentals table (chronological, oldest year first): Revenue,
@@ -1284,7 +1244,17 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
         if income is None or income.empty:
             return empty
 
-        currency = getattr(ticker.fast_info, "currency", None) or "N/A"
+        # Statements (Revenue, EPS, equity, ...) are in the company's *reporting* currency,
+        # while prices and dividends are in its *trading* currency - these differ for many
+        # SGX listings (e.g. Thai Beverage trades in SGD but reports in THB). Valuation ratios
+        # need both sides in the same currency, so prices/dividends are converted below.
+        trading_currency = getattr(ticker.fast_info, "currency", None) or "N/A"
+        try:
+            reporting_currency = (ticker.info or {}).get("financialCurrency") or trading_currency
+        except Exception:
+            logger.warning(f"{symbol}: could not read reporting currency; assuming {trading_currency}")
+            reporting_currency = trading_currency
+        currency = reporting_currency
 
         revenue_row = find_statement_row(income, FUNDAMENTAL_ROW_ALIASES["revenue"])
         gross_row = find_statement_row(income, FUNDAMENTAL_ROW_ALIASES["gross_profit"])
@@ -1312,6 +1282,17 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
 
         price_hist = fetch_long_price_history(symbol, range_str="5y")
 
+        # Historical FX (trading -> reporting currency), applied at each fiscal year-end date
+        # rather than today's spot rate. None = same currency, no conversion needed.
+        fx_hist = None
+        if reporting_currency != trading_currency and "N/A" not in (reporting_currency, trading_currency):
+            fx_hist = fetch_fx_history(trading_currency, reporting_currency, range_str="5y")
+            if fx_hist.empty:
+                logger.warning(
+                    f"{symbol}: no {trading_currency}->{reporting_currency} FX history; "
+                    f"leaving P/E, P/S, P/B and dividends blank rather than mixing currencies"
+                )
+
         try:
             dividends = ticker.dividends
             if dividends is not None and not dividends.empty:
@@ -1333,7 +1314,10 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
             equity = safe_float(equity_row.get(period)) if equity_row is not None else None
             debt = safe_float(debt_row.get(period)) if debt_row is not None else None
 
+            fx_rate = 1.0 if fx_hist is None else get_price_on_or_before(fx_hist, fye)
             price = get_price_on_or_before(price_hist, fye)
+            if price is not None:
+                price = price * fx_rate if fx_rate is not None else None
 
             pe = (price / eps) if (price is not None and eps not in (None, 0)) else None
             market_cap_fye = (price * shares) if (price is not None and shares) else None
@@ -1352,8 +1336,8 @@ def fetch_financial_history(symbol: str, code: str, name: str, max_years: int = 
                 window_end = pd.Timestamp(fye)
                 window_start = prev_fye if prev_fye is not None else (window_end - pd.DateOffset(years=1))
                 in_window = dividends[(dividends.index > window_start) & (dividends.index <= window_end)]
-                if not in_window.empty:
-                    dps = float(in_window.sum())
+                if not in_window.empty and fx_rate is not None:
+                    dps = float(in_window.sum()) * fx_rate
             prev_fye = pd.Timestamp(fye)
 
             rows.append({
@@ -1458,17 +1442,32 @@ def save_results(
             # dropping it only from this formatted copy doesn't affect that).
             df_summary_fmt = df_summary_fmt.drop(columns=["SharesOutstanding"], errors="ignore")
 
-            # Format Volume with B / M abbreviation in summary
-            if "Volume" in df_summary_fmt.columns:
-                df_summary_fmt["Volume"] = df_summary_fmt["Volume"].apply(
-                    lambda x: format_abbreviated(x) if pd.notnull(x) else "N/A"
-                )
-            # Ensure 2 decimal places for price/range/PE columns
-            for col in ["TodaysClose", "52WHigh", "52WLow", "52WRange", "Trailing_PE", "Forward_PE"]:
-                if col in df_summary_fmt.columns:
-                    df_summary_fmt[col] = df_summary_fmt[col].apply(
-                        lambda x: f"{float(x):.2f}" if pd.notnull(x) and safe_float(x) is not None else x
-                    )
+            # Numeric columns are written as real numbers (not pre-formatted text) so the
+            # Summary table's filter/sort dropdowns order them numerically. Their display
+            # (2 decimals, "SGD 1.23B", "96.73%") comes from Excel number formats applied
+            # after writing - see summary_number_formats below.
+            if "_MarketCapValue" in df_summary_fmt.columns:
+                # Swap the display string ("SGD 1.23B") for the underlying number.
+                cap_values = pd.to_numeric(df_summary_fmt["_MarketCapValue"], errors="coerce")
+                df_summary_fmt["MarketCap"] = cap_values.where(cap_values > 0)
+                df_summary_fmt = df_summary_fmt.drop(columns=["_MarketCapValue"])
+            if "Current_Proximity_to_52W_High" in df_summary_fmt.columns:
+                df_summary_fmt["Current_Proximity_to_52W_High"] = df_summary_fmt["Current_Proximity_to_52W_High"].apply(parse_percent_text)
+            summary_number_formats = {
+                "SGX_Rank": "0",
+                "NSE_Rank": "0",
+                "TodaysClose": "#,##0.00",
+                "52WHigh": "#,##0.00",
+                "52WLow": "#,##0.00",
+                "52WRange": "#,##0.00",
+                "Current_Proximity_to_52W_High": '0.00"%"',
+                "Trailing_PE": "#,##0.00",
+                "Forward_PE": "#,##0.00",
+                "DividendYield": '0.00"%"',   # Yahoo reports this in percent points already (4.08 = 4.08%)
+            }
+            for col in list(summary_number_formats) + ["MarketCap"]:
+                if col in df_summary_fmt.columns and (col != "MarketCap" or pd.api.types.is_numeric_dtype(df_summary_fmt[col])):
+                    df_summary_fmt[col] = pd.to_numeric(df_summary_fmt[col], errors="coerce")
 
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
                 # 1. Write formatted Summary Sheet
@@ -1503,6 +1502,24 @@ def save_results(
                     )
                     ws_summary.add_table(summary_table)
                     ws_summary.freeze_panes = "A2"
+
+                # Display formats for the numeric columns (values themselves stay numbers).
+                # Market Cap uses SGD (every SGX market cap is converted to SGD).
+                summary_cols = list(df_summary_fmt.columns)
+                currency_col = summary_cols.index("Currency") + 1 if "Currency" in summary_cols else None
+                market_cap_numeric = "MarketCap" in summary_cols and pd.api.types.is_numeric_dtype(df_summary_fmt["MarketCap"])
+                for c_idx, col_name in enumerate(summary_cols, start=1):
+                    fmt = summary_number_formats.get(col_name)
+                    if col_name == "MarketCap" and market_cap_numeric:
+                        fmt = "market_cap"
+                    if not fmt:
+                        continue
+                    for r_idx in range(2, len(df_summary_fmt) + 2):
+                        cell = ws_summary.cell(row=r_idx, column=c_idx)
+                        if fmt == "market_cap":
+                            cell.number_format = market_cap_number_format("SGD")
+                        else:
+                            cell.number_format = fmt
 
                 # 2. Write formatted 52W Daily History Sheet
                 history_ws = None
@@ -1684,7 +1701,7 @@ def save_results(
 
                     # 4. Hyperlink each company's Name cell on the Summary sheet to its block above
                     if "Name" in df_summary.columns and "Symbol" in df_summary.columns:
-                        name_col_idx = list(df_summary.columns).index("Name") + 1
+                        name_col_idx = list(df_summary_fmt.columns).index("Name") + 1
                         for r_idx, sym in enumerate(df_summary["Symbol"].tolist(), start=2):  # row 1 = header
                             if sym in anchor_rows:
                                 cell = ws_summary.cell(row=r_idx, column=name_col_idx)
@@ -1784,7 +1801,7 @@ def save_results(
                     # 6. Hyperlink Symbol cells on Summary, and company headers on "52W Daily
                     #    History", straight to each company's chart above.
                     if "Symbol" in df_summary.columns:
-                        symbol_col_idx = list(df_summary.columns).index("Symbol") + 1
+                        symbol_col_idx = list(df_summary_fmt.columns).index("Symbol") + 1
                         for r_idx, sym in enumerate(df_summary["Symbol"].tolist(), start=2):
                             if sym in chart_anchor_rows:
                                 cell = ws_summary.cell(row=r_idx, column=symbol_col_idx)
@@ -1801,7 +1818,7 @@ def save_results(
             logger.error(f"Failed to write Excel workbook: {e}")
     elif ext == ".json":
         base, _ = os.path.splitext(output_path)
-        df_summary.to_json(output_path, orient="records", indent=2)
+        df_summary.drop(columns=["_MarketCapValue"], errors="ignore").to_json(output_path, orient="records", indent=2)
         if df_history is not None and not df_history.empty:
             hist_path = f"{base}_history.json"
             df_history.to_json(hist_path, orient="records", indent=2)
@@ -1809,7 +1826,7 @@ def save_results(
         logger.info(f"Summary dataset successfully saved to: {os.path.abspath(output_path)}")
     else:
         base, _ = os.path.splitext(output_path)
-        df_summary.to_csv(output_path, index=False)
+        df_summary.drop(columns=["_MarketCapValue"], errors="ignore").to_csv(output_path, index=False)
         if df_history is not None and not df_history.empty:
             hist_path = f"{base}_history.csv"
             df_history.to_csv(hist_path, index=False)
@@ -1832,13 +1849,7 @@ def main():
         type=str,
         choices=["index", "market-cap"],
         default="index",
-        help="Analysis mode: 'index' (default, uses the SGX worksheet in stock list.xlsx) or 'market-cap' (scans entire SGX universe)."
-    )
-    parser.add_argument(
-        "--index-file",
-        type=str,
-        default="stock list.xlsx",
-        help="Path to the shared stock list Excel file, 'SGX' worksheet (default: 'stock list.xlsx')."
+        help="Analysis mode: 'index' (default, the built-in index + Personal stock list) or 'market-cap' (scans entire SGX universe)."
     )
     parser.add_argument(
         "--workers",
@@ -1892,9 +1903,8 @@ def main():
         )
         sheet_title = f"Top {args.top} & STI Summary"
     else:
-        logger.info(f"Running SGX Analysis in DEFAULT INDEX mode (using stock list: '{args.index_file}')...")
+        logger.info("Running SGX Analysis in DEFAULT INDEX mode (built-in index + Personal stock list)...")
         df_summary = extract_index_stocks(
-            excel_path=args.index_file,
             max_workers=args.workers
         )
         sheet_title = "SGX Index Summary"
